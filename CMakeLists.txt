@@ -1,4 +1,4 @@
-## Copyright(c) 2018, Intel Corporation
+## Copyright(c) 2020, Intel Corporation
 ##
 ## Redistribution  and  use  in source  and  binary  forms,  with  or  without
 ## modification, are permitted provided that the following conditions are met:
@@ -26,56 +26,6 @@
 
 cmake_minimum_required(VERSION 2.8.12)
 
-project("ase")
-find_package(Threads REQUIRED)
+project(opae-sim)
 
-add_definitions(-DHAVE_CONFIG_H=1)
-set(API_DIR ${PROJECT_SOURCE_DIR})
-set(ASEAPI_SRC
-  ${API_DIR}/../sw/tstamp_ops.c
-  ${API_DIR}/../sw/ase_ops.c
-  ${API_DIR}/../sw/ase_strings.c
-  ${API_DIR}/../sw/ase_host_memory.c
-  ${API_DIR}/../sw/app_backend.c
-  ${API_DIR}/../sw/mqueue_ops.c
-  ${API_DIR}/../sw/error_report.c
-  ${API_DIR}/src/common.c
-  ${API_DIR}/src/buffer.c
-  ${API_DIR}/src/close.c
-  ${API_DIR}/src/enum.c
-  ${API_DIR}/src/event.c
-  ${API_DIR}/src/manage.c
-  ${API_DIR}/src/reconf.c
-  ${API_DIR}/src/mmio.c
-  ${API_DIR}/src/open.c
-  ${API_DIR}/src/umsg.c
-  ${API_DIR}/src/version.c
-  ${API_DIR}/src/wsid_list.c
-  ${API_DIR}/src/error.c
-  ${API_DIR}/src/plugin.c
-  ${API_DIR}/src/init.c)
-
-add_library(ase SHARED ${ASEAPI_SRC})
-target_link_libraries(ase
-  ${libjson-c_LIBRARIES}
-  ${libuuid_LIBRARIES}
-  ${librt_LIBRARIES})
-
-# Define headers for this library. PUBLIC headers are used for
-# compiling the library, and will be added to consumers' build
-# paths. Keep current directory private.
-target_include_directories(ase PUBLIC
-  $<BUILD_INTERFACE:${OPAE_INCLUDE_PATH}>
-  $<INSTALL_INTERFACE:include>
-  PRIVATE src
-  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/../include>
-  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../sw>
-  PRIVATE ${OPAE_LIBS_ROOT}/libopae-c)
-
-set_target_properties(ase PROPERTIES
-  VERSION ${ASE_VERSION}
-  SOVERSION ${ASE_VERSION_MAJOR})
-
-install(TARGETS ase
-  LIBRARY DESTINATION ${OPAE_LIB_INSTALL_DIR}
-  COMPONENT opaecase)
+add_subdirectory(ase)

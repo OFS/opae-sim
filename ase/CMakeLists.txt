@@ -26,13 +26,21 @@
 
 ## Install target for ASE support files
 project(ase)
+
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include(opae_devpkgs_cmake_install)
+
+set(ASE_VERSION_MAJOR    1 CACHE STRING "ASE major version" FORCE)
+set(ASE_VERSION_MINOR    4 CACHE STRING "ASE minor version" FORCE)
+set(ASE_VERSION_REVISION 0 CACHE STRING "ASE revision version" FORCE)
+set(ASE_VERSION ${ASE_VERSION_MAJOR}.${ASE_VERSION_MINOR}.${ASE_VERSION_REVISION}
+    CACHE STRING "ASE version" FORCE)
 
 ############################################################################
 ## Create config_int.h #####################################################
 ############################################################################
 
-configure_file ("${CMAKE_SOURCE_DIR}/cmake/config/config.h.in"
+configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/cmake/config/config.h.in"
                 "${PROJECT_BINARY_DIR}/include/config.h" )
 
 ############################################################################
