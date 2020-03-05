@@ -67,7 +67,7 @@ target_include_directories(gtase PUBLIC
   $<INSTALL_INTERFACE:include>
   $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>)
 
-target_link_libraries(gtase commonlib-ase safestr dl opae-c-ase ${libjson-c_LIBRARIES}
+target_link_libraries(gtase commonlib-ase dl opae-c-ase ${libjson-c_LIBRARIES}
   uuid ${GTEST_BOTH_LIBRARIES})
 
 target_compile_definitions(gtAseU PUBLIC BUILD_ASE)
