@@ -88,7 +88,7 @@ function (Build_MOCK_DRV)
     $<BUILD_INTERFACE:${OPAE_INCLUDE_DIR}>
     PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/libopae/src>)
   add_dependencies(mock mock-sysfs-prepare)
-  target_link_libraries(mock dl safestr)
+  target_link_libraries(mock dl)
 endfunction(Build_MOCK_DRV)
 
 function(Build_Test_Target Target_Name Target_LIB)
@@ -161,7 +161,7 @@ function(Build_Test_Target Target_Name Target_LIB)
                                $<INSTALL_INTERFACE:include>
                                $<BUILD_INTERFACE:${LIB_SRC_PATH}>)
                       
-    target_link_libraries(${Target_Name} commonlib safestr ${Target_LIB} ${libjson-c_LIBRARIES} 
+    target_link_libraries(${Target_Name} commonlib ${Target_LIB} ${libjson-c_LIBRARIES} 
                               uuid ${GTEST_BOTH_LIBRARIES} dl opae-c++-utils opae-c++ opae-cxx-core)
 	  						
     if(CMAKE_THREAD_LIBS_INIT)
