@@ -28,6 +28,7 @@
 project(ase)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
+include(ase_libs)
 include(opae_devpkgs_cmake_install)
 
 set(ASE_VERSION_MAJOR    1 CACHE STRING "ASE major version" FORCE)

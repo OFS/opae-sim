@@ -25,7 +25,7 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,  EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
+
 import ase_functions
 import os
 import re
@@ -34,7 +34,7 @@ import signal
 from subprocess import call
 
 if sys.version_info < (2, 7):
-    import commands
+    import subprocess
 else:
     import subprocess
 
@@ -42,7 +42,7 @@ else:
 # Run command and get string output #
 def commands_getoutput(cmd):
     if sys.version_info < (2, 7):
-        return commands.getoutput(cmd)
+        return subprocess.getoutput(cmd)
     else:
         byte_out = subprocess.check_output(cmd.split())
         str_out = byte_out.decode("utf-8")
@@ -99,7 +99,7 @@ for rfile in ready_list:
 
 
 # Kill all ase_simv processes started by by $USER #
-cleanme_input = raw_input("Type 'y' to clean up all zombie ase_simv "
+cleanme_input = input("Type 'y' to clean up all zombie ase_simv "
                           "processes : ")
 if cleanme_input == "y":
     print("Going ahead with cleaning up ASE processes opened by ", USER)
