@@ -48,7 +48,7 @@
 #
 
 # Future-proofing against Python 3 syntax changes in 'print'
-from __future__ import print_function
+
 import argparse
 import ase_functions
 import os
@@ -57,7 +57,6 @@ import subprocess
 from collections import defaultdict
 import fnmatch
 import json
-from sets import Set
 import shutil
 
 # Supported file extensions
@@ -104,7 +103,7 @@ def remove_dups(filepath, exclude=None):
     files = []
     hashes = dict()
     with open(filepath, 'r') as fd:
-        files = filter(lambda l: l.strip() != '', fd.readlines())
+        files = [l for l in fd.readlines() if l.strip() != '']
     files = [f.strip() for f in files]
     for f in files:
         with open(f, 'r') as fd:
@@ -113,7 +112,7 @@ def remove_dups(filepath, exclude=None):
         h = m.digest()
         if h not in hashes and include(f):
             hashes[h] = f
-    text = '\n'.join(sorted(hashes.values(), key=os.path.basename))
+    text = '\n'.join(sorted(list(hashes.values()), key=os.path.basename))
     with open(filepath, 'w') as fd:
         fd.write(text)
         fd.write("\n")
@@ -172,7 +171,7 @@ def commands_list_getoutput(cmd):
             raise
     except subprocess.CalledProcessError as e:
         ase_functions.begin_red_fontcolor()
-        sys.stderr.write(e.output)
+        sys.stderr.write(e.output.decode())
         ase_functions.end_red_fontcolor()
         raise
 
@@ -181,7 +180,7 @@ def commands_list_getoutput(cmd):
 
 # Has duplicates #
 def has_duplicates(word_dict):
-    dups = filter(lambda (k, v): len(v) > 1, word_dict.items())
+    dups = [k_v for k_v in list(word_dict.items()) if len(k_v[1]) > 1]
     if dups:
         print("Duplicates found -")
         for k, v in dups:
@@ -460,7 +459,7 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
 
     # Qsys replicates library files in the tree.  Ensure that each module is
     # imported only once.
-    sim_files_found = Set()
+    sim_files_found = set()
     for s in vlog_srcs:
         sim_files_found.add(os.path.basename(s))
     for s in vhdl_srcs:
@@ -498,7 +497,7 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
                                 found_qsys_file['vlog'] = True
 
     # Drop any file lists that are empty
-    for t, v in found_qsys_file.items():
+    for t, v in list(found_qsys_file.items()):
         if not v:
             os.remove(qsys_sim_files[t])
             del qsys_sim_files[t]
@@ -532,7 +531,7 @@ def sort_key_qsys_files(fn):
 def auto_find_sources(fd):
     # Prepare list of candidate directories
     print("Valid directories supplied => ")
-    valid_dirlist = filter(lambda p: os.path.exists(p), args.dirlist)
+    valid_dirlist = [p for p in args.dirlist if os.path.exists(p)]
     str_dirlist = " ".join(valid_dirlist)
     if len(valid_dirlist) == 0:
         # This line should never be reached since the directory list was
