@@ -31,22 +31,15 @@ import os
 import re
 import sys
 import signal
+import subprocess
 from subprocess import call
-
-if sys.version_info < (2, 7):
-    import subprocess
-else:
-    import subprocess
 
 
 # Run command and get string output #
 def commands_getoutput(cmd):
-    if sys.version_info < (2, 7):
-        return subprocess.getoutput(cmd)
-    else:
-        byte_out = subprocess.check_output(cmd.split())
-        str_out = byte_out.decode("utf-8")
-        return str_out
+    byte_out = subprocess.check_output(cmd.split())
+    str_out = byte_out.decode("utf-8")
+    return str_out
 
 
 MQUEUE_MOUNT = "./work/"
