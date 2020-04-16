@@ -127,7 +127,11 @@ module ase_sim_local_mem_avmm
           bridge
            (
             .clk(local_mem[b].clk),
+`ifdef OFS_PLAT_PROVIDES_ASE_TOP
+            .reset(!local_mem[b].reset_n),
+`else
             .reset(local_mem[b].reset),
+`endif
 
             .s0_waitrequest(local_mem[b].waitrequest),
             .s0_readdata(local_mem[b].readdata),
