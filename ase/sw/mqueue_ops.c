@@ -120,6 +120,7 @@ void ipc_init(void)
 {
 	FUNC_CALL_ENTRY;
 
+	int ret;
 	int ipc_iter;
 
 	// Initialize named pipe array
@@ -129,9 +130,18 @@ void ipc_init(void)
 				mq_name_arr[ipc_iter], ASE_MQ_NAME_LEN);
 
 		// Compute path
-		snprintf(mq_array[ipc_iter].path, ASE_FILEPATH_LEN,
-			 "%s/%s", ase_workdir_path,
-			 mq_array[ipc_iter].name);
+		ret = snprintf(mq_array[ipc_iter].path, ASE_FILEPATH_LEN,
+			"%s/%s", ase_workdir_path,
+			mq_array[ipc_iter].name);
+		if (ret < 0 || ret == ASE_FILEPATH_LEN) {
+			ASE_ERR("Error generating file path for ASE");
+#ifdef SIM_SIDE
+			start_simkill_countdown();
+#else
+			exit(1);
+#endif
+		}
+
 		// Set permission flag
 		mq_array[ipc_iter].perm_flag =
 		    get_smq_perm_flag(mq_name_arr[ipc_iter]);
