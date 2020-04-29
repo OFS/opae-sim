@@ -129,9 +129,11 @@ void ipc_init(void)
 				mq_name_arr[ipc_iter], ASE_MQ_NAME_LEN);
 
 		// Compute path
-		snprintf(mq_array[ipc_iter].path, ASE_FILEPATH_LEN,
-			 "%s/%s", ase_workdir_path,
-			 mq_array[ipc_iter].name);
+		if (snprintf(mq_array[ipc_iter].path, ASE_FILEPATH_LEN,
+			"%s/%s", ase_workdir_path,
+			mq_array[ipc_iter].name) < 0) {
+			exit(1);
+		}
 		// Set permission flag
 		mq_array[ipc_iter].perm_flag =
 		    get_smq_perm_flag(mq_name_arr[ipc_iter]);
