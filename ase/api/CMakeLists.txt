@@ -28,6 +28,7 @@ cmake_minimum_required(VERSION 2.8.12)
 
 project("ase")
 find_package(Threads REQUIRED)
+find_package(RT REQUIRED)
 
 add_definitions(-DHAVE_CONFIG_H=1)
 set(API_DIR ${PROJECT_SOURCE_DIR})
