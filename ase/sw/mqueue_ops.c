@@ -317,17 +317,29 @@ void mqueue_send(int mq, const char *str, int size)
 {
 	FUNC_CALL_ENTRY;
 
-	int ret_tx;
-	ret_tx = write(mq, (void *) str, size);
+	int ret_wr;
 
-	if ((ret_tx == 0) || (ret_tx != size)) {
-		perror("write");
-#ifdef ASE_DEBUG
-		ASE_DBG("write() returned wrong data size.");
-#endif
+	// Send the message length first
+	ret_wr = write(mq, (const void *) &size, sizeof(size));
+	if (ret_wr < (int)sizeof(size)) goto wr_error;
+
+	int sent_total = 0;
+	while (sent_total < size) {
+		ret_wr = write(mq, (const void *) &str[sent_total], size - sent_total);
+		if (ret_wr <= 0) goto wr_error;
+
+		sent_total += ret_wr;
 	}
 
 	FUNC_CALL_EXIT;
+	return;
+
+  wr_error:
+	perror("write");
+#ifdef SIM_SIDE
+	start_simkill_countdown();
+#endif
+	exit(1);
 }
 
 
@@ -339,13 +351,51 @@ int mqueue_recv(int mq, char *str, int size)
 {
 	FUNC_CALL_ENTRY;
 
-	int ret;
+	int ret_rd;
 
-	ret = read(mq, str, size);
-	FUNC_CALL_EXIT;
-	if (ret > 0) {
-		return ASE_MSG_PRESENT;
-	} else {
-		return ((ret == 0) || (errno == EAGAIN)) ? ASE_MSG_ABSENT : ASE_MSG_ERROR;
+	// Get the message length
+	int msg_len;
+	ret_rd = read(mq, (void *) &msg_len, sizeof(size));
+	if (ret_rd < (int)sizeof(size)) {
+		FUNC_CALL_EXIT;
+		return ((ret_rd == 0) || (errno == EAGAIN)) ? ASE_MSG_ABSENT : ASE_MSG_ERROR;
 	}
+
+	if (msg_len > size) {
+		ASE_ERR("Message size %d too large for buffer (%d)!", msg_len, size);
+#ifdef SIM_SIDE
+		start_simkill_countdown();
+#endif
+		exit(1);
+	}
+
+	// Receive the entire message
+	int recv_total = 0;
+	int empty_trips = 0;
+	while (recv_total < msg_len) {
+		ret_rd = read(mq, (void *) &str[recv_total], msg_len - recv_total);
+		if (ret_rd <= 0) {
+			// Message queues are non-blocking, so we may have to wait for the
+			// message to arrive.
+			ret_rd = 0;
+			usleep(1);
+			if (++empty_trips == 100000) goto rd_error;
+		}
+		else
+		{
+			empty_trips = 0;
+		}
+
+		recv_total += ret_rd;
+	}
+
+	FUNC_CALL_EXIT;
+	return ASE_MSG_PRESENT;
+
+  rd_error:
+	perror("read");
+#ifdef SIM_SIDE
+	start_simkill_countdown();
+#endif
+	exit(1);
 }
