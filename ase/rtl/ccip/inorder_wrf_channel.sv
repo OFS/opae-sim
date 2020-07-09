@@ -56,8 +56,6 @@
  *
  */
 
-import ase_pkg::*;
-
 `include "platform.vh"
 
 module inorder_wrf_channel
@@ -76,14 +74,14 @@ module inorder_wrf_channel
     input logic 		       rst,
     input logic 		       finish_trigger,
     // Transaction in
-    input 			       TxHdr_t hdr_in,
-    input logic [CCIP_DATA_WIDTH-1:0]  data_in,
-    input logic 		       write_en,
+    input ase_ccip_pkg::TxHdr_t	       hdr_in,
+    input logic [ase_ccip_pkg::CCIP_DATA_WIDTH-1:0]  data_in,
+    input logic			       write_en,
     // Transaction out
-    output 			       TxHdr_t txhdr_out,
-    output 			       RxHdr_t rxhdr_out,
-    output logic [CCIP_DATA_WIDTH-1:0] data_out,
-    output logic 		       valid_out,
+    output ase_ccip_pkg::TxHdr_t       txhdr_out,
+    output ase_ccip_pkg::RxHdr_t       rxhdr_out,
+    output logic [ase_ccip_pkg::CCIP_DATA_WIDTH-1:0] data_out,
+    output logic		       valid_out,
     input logic 		       read_en,
     // Status signals
     output logic 		       empty,
@@ -91,9 +89,12 @@ module inorder_wrf_channel
     output logic 		       full,
     output logic 		       overflow_error,
     // Status inputs to hazard detector logic (dummy ports, never used --- since everything is in-order)
-    output 			       ase_haz_pkt hazpkt_in,
-    output 			       ase_haz_pkt hazpkt_out
+    output ase_ccip_pkg::ase_haz_pkt   hazpkt_in,
+    output ase_ccip_pkg::ase_haz_pkt   hazpkt_out
     );
+
+   import ase_pkg::*;
+   import ase_ccip_pkg::*;
 
    // Logger function
 `ifdef ASE_DEBUG

@@ -7,13 +7,15 @@
 +incdir+.
 
 ase_pkg.sv
-outoforder_wrf_channel.sv
-inorder_wrf_channel.sv
+ase_sim_pkg.sv
 latency_pipe.sv
-ccip_emulator.sv
 ase_svfifo.sv
-ccip_logger.sv
-ccip_checker.sv
+ccip/ase_ccip_pkg.sv
+ccip/outoforder_wrf_channel.sv
+ccip/inorder_wrf_channel.sv
+ccip/ccip_emulator.sv
+ccip/ccip_logger.sv
+ccip/ccip_checker.sv
 ase_sim_local_mem.sv
 ase_sim_local_mem_avmm_bridge.v
 ase_top.sv

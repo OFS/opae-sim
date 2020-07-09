@@ -86,8 +86,6 @@
  *
  */
 
-import ase_pkg::*;
-
 `include "platform.vh"
 
 module outoforder_wrf_channel
@@ -106,13 +104,13 @@ module outoforder_wrf_channel
     input logic 		       rst,
     input logic 		       finish_trigger,
     // Transaction in
-    input 			       TxHdr_t hdr_in,
-    input logic [CCIP_DATA_WIDTH-1:0]  data_in,
+    input ase_ccip_pkg::TxHdr_t        hdr_in,
+    input logic [ase_ccip_pkg::CCIP_DATA_WIDTH-1:0]  data_in,
     input logic 		       write_en,
     // Transaction out
-    output 			       TxHdr_t txhdr_out,
-    output 			       RxHdr_t rxhdr_out,
-    output logic [CCIP_DATA_WIDTH-1:0] data_out,
+    output ase_ccip_pkg::TxHdr_t       txhdr_out,
+    output ase_ccip_pkg::RxHdr_t       rxhdr_out,
+    output logic [ase_ccip_pkg::CCIP_DATA_WIDTH-1:0] data_out,
     output logic 		       valid_out,
     input logic 		       read_en,
     // Status signals
@@ -121,10 +119,13 @@ module outoforder_wrf_channel
     output logic 		       full,
     output logic 		       overflow_error,
     // Status inputs to hazard detector logic
-    output 			       ase_haz_pkt hazpkt_in,
-    output 			       ase_haz_pkt hazpkt_out
+    output ase_ccip_pkg::ase_haz_pkt   hazpkt_in,
+    output ase_ccip_pkg::ase_haz_pkt   hazpkt_out
     );
 
+   import ase_pkg::*;
+   import ase_ccip_pkg::*;
+   import ccip_if_pkg::*;
 
    /*
     * FUNCTION: get_random_from_range

@@ -50,11 +50,11 @@
 `include "platform_if.vh"
 `include "platform.vh"
 
-import ase_pkg::*;
-
 `timescale 1ps/1ps
 
 module ase_top();
+
+    import ase_pkg::*;
 
     //
     // Generate clocks
@@ -153,6 +153,9 @@ module ase_top_generic
    input  logic uClk_usr,
    input  logic uClk_usrDiv2
    );
+
+   import ase_pkg::*;
+   import ase_ccip_pkg::*;
 
    logic pck_cp2af_softReset;
 

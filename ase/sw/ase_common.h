@@ -795,13 +795,13 @@ extern struct ase_capability_t ase_capability;
 #ifdef FPGA_PLATFORM_INTG_XEON
 #define ASE_ENABLE_UMSG_FEATURE
 #undef  ASE_ENABLE_INTR_FEATURE
-#define ASE_ENABLE_MMIO512
 // ------------------------------------------ //
 #elif FPGA_PLATFORM_DISCRETE
 #undef  ASE_ENABLE_UMSG_FEATURE
 #define ASE_ENABLE_INTR_FEATURE
-#undef  ASE_ENABLE_MMIO512
 #endif
+
+#define ASE_ENABLE_MMIO512
 // ------------------------------------------ //
 
 static inline int is_directory(const char *path)
