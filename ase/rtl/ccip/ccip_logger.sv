@@ -35,9 +35,6 @@
  *
  */
 
-import ase_pkg::*;
-import ccip_if_pkg::*;
-
 `include "platform.vh"
 
 module ccip_logger
@@ -56,9 +53,13 @@ module ccip_logger
     // CCI interface
     input logic clk,
     input logic SoftReset,
-    input 	t_if_ccip_Rx ccip_rx,
-    input 	t_if_ccip_Tx ccip_tx
+    input ccip_if_pkg::t_if_ccip_Rx ccip_rx,
+    input ccip_if_pkg::t_if_ccip_Tx ccip_tx
     );
+
+   import ase_pkg::*;
+   import ase_ccip_pkg::*;
+   import ccip_if_pkg::*;
 
 
    /*

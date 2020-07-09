@@ -48,8 +48,6 @@
  * All warnings are logged in ccip_warning_and_errors.txt
  */
 
-import ase_pkg::*;
-import ccip_if_pkg::*;
 `include "platform.vh"
 
 // `define STANDALONE_DEBUG
@@ -69,16 +67,21 @@ module ccip_checker
     input logic               cf2as_ch1_realfull,
     // -------------------------------------------------------- //
     //          Hazard/Indicator Signals                        //
-    input                     ase_haz_if haz_if,
-    output logic [SNIFF_VECTOR_WIDTH-1:0] error_code,
+    input ase_ccip_pkg::ase_haz_if haz_if,
+    output logic [ase_ccip_pkg::SNIFF_VECTOR_WIDTH-1:0] error_code,
     // -------------------------------------------------------- //
     //              CCI-P interface                             //
     input logic               clk,
     input logic               SoftReset,
-    input                     t_if_ccip_Rx ccip_rx,
-    input                     t_if_ccip_Tx ccip_tx
+    input ccip_if_pkg::t_if_ccip_Rx ccip_rx,
+    input ccip_if_pkg::t_if_ccip_Tx ccip_tx
     );
- logic [SNIFF_VECTOR_WIDTH-1:0] error_code_q;
+
+   import ase_pkg::*;
+   import ase_ccip_pkg::*;
+   import ccip_if_pkg::*;
+
+   logic [SNIFF_VECTOR_WIDTH-1:0] error_code_q;
 
    /*
     * Function Request type checker

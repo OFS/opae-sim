@@ -43,9 +43,6 @@
  *
  */
 
-import ase_pkg::*;
-import ccip_if_pkg::*;
-
 `include "platform.vh"
 
 // CCI to Memory translator module
@@ -66,16 +63,18 @@ module ccip_emulator
     output logic       pck_cp2af_error,        // CCI-P Protocol Error Detected
    
     // Interface structures
-    output 	      t_if_ccip_Rx pck_cp2af_sRx, // CCI-P Rx Port
-    input 	      t_if_ccip_Tx pck_af2cp_sTx  // CCI-P Tx Port
+    output ccip_if_pkg::t_if_ccip_Rx pck_cp2af_sRx, // CCI-P Rx Port
+    input  ccip_if_pkg::t_if_ccip_Tx pck_af2cp_sTx  // CCI-P Tx Port
     );
+
+    import ase_pkg::*;
+    import ase_sim_pkg::*;
+    import ase_ccip_pkg::*;
+    import ccip_if_pkg::*;
 
     // Power and error state
     assign pck_cp2af_pwrState = 2'b0;
     assign pck_cp2af_error    = 1'b0;
-
-    // reset
-    logic          SoftReset;
 
     // Tx0 & bookkeeper
     ASETxHdr_t                         ASE_C0TxHdr;
@@ -108,15 +107,9 @@ module ccip_emulator
     logic                              C0TxAlmFull;
     logic                              C1TxAlmFull;
 
-    logic                              clk;
-
     // Real Full ch2as
     logic                              cf2as_ch0_realfull;
     logic                              cf2as_ch1_realfull;
-
-    // Reset lockdown flag
-    // Stop taking any more requests if ase_reset was requested
-    logic                              reset_lockdown = 0;
 
     // Disable settings
     logic                              ase_logger_disable;
@@ -239,10 +232,6 @@ module ccip_emulator
     endfunction
 
 
-    // ASE's internal reset signal
-    logic                 ase_reset = 1;
-    logic                 init_reset = 1;
-
     /*
      * Remapping ASE CCIP to cvl_pkg struct
      */
@@ -301,17 +290,8 @@ module ccip_emulator
     // Scope function
     import "DPI-C" context function void scope_function();
 
-    // ASE Initialize function
-    import "DPI-C" context task ase_init();
-
-    // Indication that ASE is ready
-    import "DPI-C" function void ase_ready();
-
     // Global listener function
     import "DPI-C" context task ase_listener();
-
-    // ASE config data exchange (read from ase.cfg)
-    export "DPI-C" task ase_config_dex;
 
     // Unordered message dispatch
    `ifdef ASE_ENABLE_UMSG_FEATURE
@@ -330,16 +310,6 @@ module ccip_emulator
     // Transaction count update ping/pong
     export "DPI-C" task count_error_flag_ping;
     import "DPI-C" function void count_error_flag_pong(int flag);
-
-    // ASE instance check
-    import "DPI-C" function int ase_instance_running();
-
-    // Global dealloc allowed flag
-    import "DPI-C" function void update_glbl_dealloc(int flag);
-
-    // CONFIG, SCRIPT DEX operations
-    import "DPI-C" function void sv2c_config_dex(string str);
-    import "DPI-C" function void sv2c_script_dex(string str);
 
     // Data exchange for READ, WRITE system
     import "DPI-C" function void rd_memline_req_dex(inout cci_pkt pkg);
@@ -366,17 +336,11 @@ module ccip_emulator
     // Simulator global reset (issued at simulator start, or session end)
     export "DPI-C" task ase_reset_trig;
 
-    // Software controlled reset response
-    import "DPI-C" function void sw_reset_response();
-
     // cci_logger buffer message
     export "DPI-C" task buffer_msg_inject;
 
     // Scope generator
     initial          scope_function();
-
-    // Ready PID
-    int              ase_ready_pid;
 
     // Finish logger command
     logic            finish_trigger = 0;
@@ -385,7 +349,7 @@ module ccip_emulator
      * Credit control system
      */
     int              glbl_dealloc_credit;
-    int              glbl_dealloc_credit_q;
+    assign ase_sim_pkg::system_is_idle = (glbl_dealloc_credit == 0);
 
     // Individual credit counts
     int              rd_credit;
@@ -420,21 +384,9 @@ module ccip_emulator
     // Hazard checker signals
     ase_haz_if haz_if;
 
-    /*
-     * ASE Simulator reset
-     * - Use sparingly, only for initialization and reset between session_init(s)
-     */
+    // ASE simulator reset
     task ase_reset_trig();
-    begin
-        reset_lockdown = 1;
-        wait (glbl_dealloc_credit == 0);
-        @(posedge clk);
-        ase_reset = 1; 
-        run_clocks(20);
-        ase_reset = 0;
-        run_clocks(20);
-        reset_lockdown = 0;
-    end
+        ase_sim_pkg::system_reset_trig();
     endtask
 
     /*
@@ -449,38 +401,6 @@ module ccip_emulator
     end
     endtask
 
-    /*
-     * Multi-instance multi-user +CONFIG,+SCRIPT instrumentation
-     * RUN =>
-     * cd <work>
-     * ./<simulator> +CONFIG=<path_to_cfg> +SCRIPT=<path_to_run_SEE_README>
-     *
-     */
-    string config_filepath;
-    string script_filepath;
-`ifdef ASE_DEBUG
-    initial begin
-        if ($value$plusargs("CONFIG=%S", config_filepath))
-        begin
-           `BEGIN_YELLOW_FONTCOLOR;
-           $display("  [DEBUG]  Config = %s", config_filepath);
-           `END_YELLOW_FONTCOLOR;
-        end
-    end
-
-    initial begin
-        if ($value$plusargs("SCRIPT=%S", script_filepath))
-        begin
-        `BEGIN_YELLOW_FONTCOLOR;
-         $display("  [DEBUG]  Script = %s", script_filepath);
-        `END_YELLOW_FONTCOLOR;
-        end
-    end
-`else
-    initial $value$plusargs("CONFIG=%S", config_filepath);
-    initial $value$plusargs("SCRIPT=%S", script_filepath);
-`endif
-
 
     /*
      * Overflow/underflow signal checks
@@ -493,139 +413,10 @@ module ccip_emulator
     // ASE clock
     assign clk = pClk;
 
-    // Reset management
-    logic             sw_reset_trig = 1;
-    logic             app_reset_trig;
-    logic             app_reset_trig_q;
-    int               rst_timeout_counter;
-    int               rst_counter;
-
-    // Register app_reset_trig
-    always @(posedge clk)
-    begin
-        app_reset_trig_q <= app_reset_trig;
-    end
-
-    // Reset states
-    typedef enum {
-        ResetIdle,
-        ResetHoldHigh,
-        ResetHoldLow,
-        ResetWait
-    } ResetStateEnum;
-    ResetStateEnum        rst_state;
-
     // AFU Soft Reset Trigger
-    task afu_softreset_trig(int init, int value );
-    begin
-        if (init) begin
-            app_reset_trig = 0;
-        end
-        else begin
-            app_reset_trig = value[0];
-        end
-    end
+    task afu_softreset_trig(int init, int value);
+        ase_sim_pkg::afu_softreset(init, value);
     endtask
-
-    // Reset FSM
-    always @(posedge clk)
-    begin
-        if (ase_reset)
-        begin
-            rst_state           <= ResetIdle;
-            rst_counter         <= 0;
-            rst_timeout_counter <= 0;
-        end
-        else 
-        begin
-            case (rst_state)
-            ResetIdle:
-                begin
-                    rst_timeout_counter <= 0;
-                    // 0 -> 1
-                    if (~app_reset_trig_q && app_reset_trig)
-                    begin
-                        rst_state <= ResetHoldHigh;
-                    end
-                    // 1 -> 0
-                    else if (app_reset_trig_q && ~app_reset_trig)
-                    begin
-                        rst_state <= ResetHoldLow;
-                    end
-                    else
-                    begin
-                        rst_state <= ResetIdle;
-                    end
-                end
-
-            // Set to 1
-            ResetHoldHigh:
-                begin
-                    if (glbl_dealloc_credit != 0)
-                    begin
-                        if (rst_timeout_counter < `RESET_TIMEOUT_DURATION)
-                        begin
-                            rst_timeout_counter <= rst_timeout_counter + 1;
-                            rst_state           <= ResetHoldHigh;
-                        end
-                        else
-                        begin
-                            `BEGIN_RED_FONTCOLOR;
-                            $display("  [SIM]  Reset request timed out... Behavior maybe undefined !");
-                            `END_RED_FONTCOLOR;
-                            sw_reset_trig <= 1;
-                            rst_state <= ResetWait;
-                        end
-                    end
-                    else
-                    begin
-                       sw_reset_trig <= 1;
-                       rst_state <= ResetWait;
-                    end
-                end
-
-            // Set to 0
-            ResetHoldLow:
-                begin
-                    sw_reset_trig <= 0;
-                    rst_state <= ResetWait;
-                end
-
-            // Wait few cycles
-            ResetWait:
-                begin
-                    if (rst_counter < `SOFT_RESET_DURATION)
-                    begin
-                        rst_counter <= rst_counter + 1;
-                        rst_state <= ResetWait;
-                    end
-                    else begin
-                       rst_counter <= 0;
-                       rst_state <= ResetIdle;
-                       sw_reset_response();
-                    end
-                 end
-
-            default:
-                begin
-                    rst_state <= ResetIdle;
-                end
-
-            endcase
-        end
-    end
-
-
-    /*
-     * AFU reset - software & system resets
-     */
-    //
-    //       0        |     0               0     |
-    //       1        |     0               1     |
-    //       1        |     1               0     |
-    //       1        |     1               1     | Initial reset
-
-    assign SoftReset = ase_reset | sw_reset_trig;
 
 
     /********************************************************************
@@ -634,14 +425,8 @@ module ccip_emulator
      * Software controlled event trigger for watching signals
      *
      * *****************************************************************/
-    task run_clocks (int num_clks);
-        int clk_iter;
-    begin
-        for (clk_iter = 0; clk_iter <= num_clks; clk_iter = clk_iter + 1)
-        begin
-            @(posedge clk);
-        end
-      end
+    task run_clocks(int num_clks);
+        ase_sim_pkg::advance_clock(num_clks);
     endtask
 
     /* ***************************************************************************
@@ -1303,27 +1088,6 @@ module ccip_emulator
         end
     end
 `endif //  `ifdef ASE_ENABLE_UMSG_FEATURE
-
-
-    /* ******************************************************************
-     *
-     * Config data exchange - Supplied by ase.cfg
-     * Configuration of ASE managed by a text file, modifiable runtime
-     *
-     * *****************************************************************/
-    task ase_config_dex(ase_cfg_t cfg_in);
-    begin
-        // Cfg transfer
-        cfg.ase_mode                 = cfg_in.ase_mode                 ;
-        cfg.ase_timeout              = cfg_in.ase_timeout              ;
-        cfg.ase_num_tests            = cfg_in.ase_num_tests            ;
-        cfg.enable_reuse_seed        = cfg_in.enable_reuse_seed        ;
-        cfg.ase_seed                 = cfg_in.ase_seed                 ;
-        cfg.enable_cl_view           = cfg_in.enable_cl_view           ;
-        cfg.usr_tps                  = cfg_in.usr_tps                  ;
-        cfg.phys_memory_available_gb = cfg_in.phys_memory_available_gb ;
-    end
-    endtask
 
 
     /* ******************************************************************
@@ -2369,45 +2133,8 @@ module ccip_emulator
 
     /*
      * Initialization procedure
-     *
-     * DESCRIPTION: This procedural block is called when ./simv is
-     *              kicked off, helps put the simulation in a known
-     *              state.
-     *
-     * STEPS:
-     * - Print startup info
-     * - Send initial system reset, cleaning up state machines
-     * - Initialize ASE (ase_init executes in SW)
-     *   - Set up message queues for IPC (done in SW)
-     *   - Set up memory management structure (called in SW)
-     * - If ENABLED, start the CA-private memory region (emulated with
-     *   software
-     * - Then set up the QLP InitDone signal to go indicate readiness
-     * - SIMULATION is ready to begin
-     *
      */
     initial begin : ase_entry_point
-        init_reset <= 1;
-        $display("  [SIM]  Simulator started...");
-
-        // Check if simulator is already running in this directory:
-        // If YES, kill simulator, post message
-        // If NO, continue
-        ase_ready_pid = ase_instance_running();
-        if (ase_ready_pid != 0) begin
-           `BEGIN_RED_FONTCOLOR;
-           $display("  [SIM]  An ASE instance is probably still running in current directory !");
-           $display("  [SIM]  Check for PID %d", ase_ready_pid);
-           $display("  [SIM]  Simulation will exit... you may use a SIGKILL to kill the simulation process.");
-           $display("  [SIM]  Also check if '.ase_ready.pid' file is removed before proceeding.");
-           `END_RED_FONTCOLOR;
-           $finish;
-        end
-
-        // AFU reset
-        init_reset <= 0;
-        afu_softreset_trig(1, 0 );
-
         // Initialize mmio_dispatch function (both integrated & discrete)
         mmio_dispatch (1, '{0, 0, 0, 0, '{0,0,0,0,0,0,0,0}, 0});
 
@@ -2416,31 +2143,15 @@ module ccip_emulator
         umsg_dispatch (1, '{0, 0, '{0,0,0,0,0,0,0,0}});
 `endif
 
-        // Globally write CONFIG, SCRIPT paths
-        if (config_filepath.len() != 0) begin
-            sv2c_config_dex(config_filepath);
-        end
-        if (script_filepath.len() != 0) begin
-            sv2c_script_dex(script_filepath);
-        end
+        ase_sim_pkg::ase_sim_init();
+    end
 
-        // Initialize SW side of ASE
-        ase_init();
 
-        // Read seed and print
-        $display("  [SIM]  ASE running with seed => %d", cfg.ase_seed);
-        // $srandom(cfg.ase_seed);
-        // $urandom(cfg.ase_seed);
-
-        // Initial signal values
-        $display("  [SIM]  Sending initial reset...");
-        ase_reset_trig();
-
-        sw_reset_trig <= 0;
-        run_clocks(20);
-
-        // Indicate to APP that ASE is ready
-        ase_ready();
+    /*
+     * ASE management task
+     */
+    always @(posedge clk) begin : mgmt
+        ase_sim_pkg::ase_sim_every_cycle();
     end
 
 
@@ -2739,27 +2450,6 @@ module ccip_emulator
     // Global dealloc flag enable
     always @(posedge clk) begin
         glbl_dealloc_credit <= wr_credit + rd_credit + mmiord_credit + mmiowr_credit + umsg_credit + mmioreq_count + rdrsp_fifo_cnt + wrrsp_fifo_cnt ;
-    end
-
-    // Register for changes
-    always @(posedge clk) begin
-        glbl_dealloc_credit_q <= glbl_dealloc_credit;
-    end
-
-    // Update process
-    always @(posedge clk) begin
-        if ((glbl_dealloc_credit_q == 0) && (glbl_dealloc_credit != 0)) begin
-            update_glbl_dealloc(0);
-        end
-        else if ((glbl_dealloc_credit_q != 0) && (glbl_dealloc_credit == 0)) begin
-            update_glbl_dealloc(1);
-        end
-        else if (glbl_dealloc_credit == 0) begin
-            update_glbl_dealloc(1);
-        end
-        else if ((glbl_dealloc_credit_q == 0) && (glbl_dealloc_credit == 0)) begin
-            update_glbl_dealloc(0);
-        end
     end
 
 endmodule // cci_emulator
