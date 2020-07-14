@@ -789,7 +789,7 @@ void session_deinit(void)
 /*
  * Get a scoreboard slot
  */
-int find_empty_mmio_scoreboard_slot(void)
+static int find_empty_mmio_scoreboard_slot(void)
 {
 	int ii;
 	int idx;
@@ -850,6 +850,7 @@ int mmio_request_put(struct mmio_t *pkt)
 	int mmiotable_idx;
 	mmiotable_idx = find_empty_mmio_scoreboard_slot();
 	if (mmiotable_idx != 0xFFFF) {
+		pkt->slot_idx = mmiotable_idx;
 		mmio_table[mmiotable_idx].tx_flag = true;
 		mmio_table[mmiotable_idx].rx_flag = false;
 		mmio_table[mmiotable_idx].tid = pkt->tid;
@@ -1616,7 +1617,7 @@ void *umsg_watcher(void *arg)
 	return 0;
 }
 
-STATIC ase_host_memory_status membus_op_status(uint64_t va, uint64_t pa)
+STATIC ase_host_memory_status membus_op_status(uint64_t va, uint64_t pa, uint64_t bytes)
 {
 	ase_host_memory_status st;
 
@@ -1626,8 +1627,8 @@ STATIC ase_host_memory_status membus_op_status(uint64_t va, uint64_t pa)
 		page_mask = ~(page_mask - 1);
 	}
 
-	if (pa & 0x3f) {
-		// Not line-aligned address
+	if (((pa & 4095) + bytes) > 4096) {
+		// Request crosses a 4KB boundary -- illegal on PCIe and impossible on CCI-P
 		st = HOST_MEM_STATUS_ILLEGAL;
 	} else if (va == 0) {
 		st = HOST_MEM_STATUS_NOT_PINNED;
@@ -1671,13 +1672,19 @@ static void *membus_rd_watcher(void *arg)
 		if (mqueue_recv(sim2app_membus_rd_req_rx, (char *) &rd_req, sizeof(rd_req)) == ASE_MSG_PRESENT) {
 			rd_rsp.pa = rd_req.addr;
 			rd_rsp.va = ase_host_memory_pa_to_va(rd_req.addr, true);
-			rd_rsp.status = membus_op_status(rd_rsp.va, rd_rsp.pa);
-			if (rd_rsp.status == HOST_MEM_STATUS_VALID) {
-				ase_memcpy(rd_rsp.data, (char *) rd_rsp.va, CL_BYTE_WIDTH);
+			rd_rsp.data_bytes = rd_req.data_bytes;
+			rd_rsp.tag = rd_req.tag;
+			rd_rsp.status = membus_op_status(rd_rsp.va, rd_rsp.pa, rd_req.data_bytes);
+			if (rd_rsp.status != HOST_MEM_STATUS_VALID) {
+				rd_rsp.data_bytes = 0;
 			}
-			ase_host_memory_unlock();
 
 			mqueue_send(app2sim_membus_rd_rsp_tx, (char *) &rd_rsp, sizeof(rd_rsp));
+			if (rd_rsp.status == HOST_MEM_STATUS_VALID) {
+				mqueue_send(app2sim_membus_rd_rsp_tx, (char *) rd_rsp.va, rd_rsp.data_bytes);
+			}
+
+			ase_host_memory_unlock();
 		}
 	}
 
@@ -1685,6 +1692,18 @@ static void *membus_rd_watcher(void *arg)
 
 	return 0;
 }
+
+
+// Copy src to dst if mask bit 0 is 1. Shift mask right 1.
+static inline void be_memcpy(char *dst, const char *src, uint8_t *mask)
+{
+    if (*mask & 1)
+    {
+        *dst = *src;
+    }
+    *mask >>= 1;
+}
+
 
 static void *membus_wr_watcher(void *arg)
 {
@@ -1696,29 +1715,75 @@ static void *membus_wr_watcher(void *arg)
 	ase_host_memory_write_rsp wr_rsp;
 	ase_memset(&wr_rsp, 0, sizeof(wr_rsp));
 
+	// Allocate a buffer to hold the data
+	char *data = ase_malloc(HOST_MEM_MAX_DATA_SIZE);
+	int r;
+
 	// While application is running
 	while (membus_exist_status == ESTABLISHED) {
 		if (mqueue_recv(sim2app_membus_wr_req_rx, (char *) &wr_req, sizeof(wr_req)) == ASE_MSG_PRESENT) {
+			// Get the data, which was sent separately
+			if (wr_req.data_bytes > HOST_MEM_MAX_DATA_SIZE) {
+				ASE_ERR("Memory write payload too large!\n");
+				raise(SIGABRT);
+			}
+			while ((r = mqueue_recv(sim2app_membus_wr_req_rx, data, wr_req.data_bytes)) != ASE_MSG_PRESENT) {
+				if (r == ASE_MSG_ERROR) {
+					ASE_ERR("Error receiving memory write data\n");
+					raise(SIGABRT);
+				}
+			}
+
 			wr_rsp.pa = wr_req.addr;
 			wr_rsp.va = ase_host_memory_pa_to_va(wr_req.addr, true);
-			wr_rsp.status = membus_op_status(wr_rsp.va, wr_rsp.pa);
+			wr_rsp.status = membus_op_status(wr_rsp.va, wr_rsp.pa, wr_req.data_bytes);
+
+			// PCIe byte enable mode. Operate on 32 bit DWORDs and mask first/last words.
+			if (wr_req.byte_en)
+			{
+				// Must be multiple of 32 bit DWORDs
+				if (wr_req.data_bytes & 3) wr_rsp.status = HOST_MEM_STATUS_ILLEGAL;
+				if (wr_req.data_bytes == 0) wr_rsp.status = HOST_MEM_STATUS_ILLEGAL;
+			}
+
 			if (wr_rsp.status == HOST_MEM_STATUS_VALID) {
 				char *dst = (char *) wr_rsp.va;
-				char *src = (char *) wr_req.data;
-				size_t len = CL_BYTE_WIDTH;
+				char *src = data;
+				size_t len = wr_req.data_bytes;
+				bool masked_lb = false;
 
-				// Partial write? Figure out the region to copy.
+				// Masked write? Figure out the region to copy.
 				if (wr_req.byte_en) {
-					dst += wr_req.byte_start;
-					src += wr_req.byte_start;
-					len = wr_req.byte_len;
-					if ((src + len - (char *) wr_req.data) > CL_BYTE_WIDTH) {
-						ASE_ERR("Byte range is outside of cache line!");
-						ase_exit();
+					if (wr_req.first_be != 0xf) {
+						uint8_t mask = wr_req.first_be;
+						be_memcpy(dst++, src++, &mask);
+						be_memcpy(dst++, src++, &mask);
+						be_memcpy(dst++, src++, &mask);
+						be_memcpy(dst++, src++, &mask);
+						len -= 4;
+					}
+
+					// Last 32 bit DWORD will get the same treatment
+					if ((wr_req.data_bytes > 4) && (wr_req.last_be != 0xf)) {
+						len -= 4;
+						masked_lb = true;
 					}
 				}
 
-				ase_memcpy(dst, src, len);
+                if (len) ase_memcpy(dst, src, len);
+
+				if (masked_lb)
+				{
+					// Finish the masked write
+					dst += len;
+					src += len;
+
+					uint8_t mask = wr_req.last_be;
+					be_memcpy(dst++, src++, &mask);
+					be_memcpy(dst++, src++, &mask);
+					be_memcpy(dst++, src++, &mask);
+					be_memcpy(dst++, src++, &mask);
+				}
 			}
 			ase_host_memory_unlock();
 

@@ -47,8 +47,8 @@
 // We define these as const uint64_t instead of enum for alignment
 // when passing between 32 bit simulators and 64 bit applications.
 //
-#define HOST_MEM_REQ_READ_LINE 0
-#define HOST_MEM_REQ_WRITE_LINE 1
+#define HOST_MEM_REQ_READ 0
+#define HOST_MEM_REQ_WRITE 1
 typedef uint64_t ase_host_memory_req;
 
 #define HOST_MEM_STATUS_VALID 0
@@ -61,25 +61,34 @@ typedef uint64_t ase_host_memory_req;
 #define HOST_MEM_STATUS_NOT_MAPPED 3
 typedef uint64_t ase_host_memory_status;
 
+// Maximum size (bytes) of a memory read or write request within
+// the simulator. This may be larger than the maximum on a particular
+// simulated bus.
+#define HOST_MEM_MAX_DATA_SIZE 4096
+
 //
 // Read request, simulator to application.
 //
 typedef struct {
 	uint64_t addr;
 	ase_host_memory_req req;
+	uint32_t data_bytes;
+	uint32_t tag;
 } ase_host_memory_read_req;
 
 //
 // Read response, application to simulator.
 //
 typedef struct {
-	uint8_t data[CL_BYTE_WIDTH];
-
 	// Simulated host physical address
 	uint64_t pa;
 	// Virtual address in application space.  We store this as
 	// a uint64_t so the size is consistent even in 32 bit simulators.
 	uint64_t va;
+
+	// Size of the payload that follows this response in the stream
+	uint32_t data_bytes;
+	uint32_t tag;
 
 	// Does the response hold valid data?
 	ase_host_memory_status status;
@@ -90,15 +99,17 @@ typedef struct {
 //
 typedef struct {
 	uint64_t addr;
-	uint8_t data[CL_BYTE_WIDTH];
 	ase_host_memory_req req;
 
-	// Byte range
-	uint8_t byte_en;         // Access limited to byte range within line when non-zero
-	uint8_t byte_start;      // Index of first byte update
-	uint8_t byte_len;        // Number of bytes to update, starting with byte_start
+	// Byte range (PCIe-style 4 bit first byte/last byte enable mask.)
+	// fbe and lbe are ignored when byte_n is 0. Data_bytes must be a
+	// multiple of 4 when byte_en is set.
+	uint8_t byte_en;
+	uint8_t first_be;        // 4 bit byte mask in first DWORD
+	uint8_t last_be;         // 4 bit byte mask in last DWORD
+	uint8_t rsvd;
 
-	uint32_t dummy;          // Force alignment to 64 bits
+	uint32_t data_bytes;     // Size of the data payload the follows in the message stream
 } ase_host_memory_write_req;
 
 //
@@ -139,6 +150,12 @@ void ase_host_memory_unlock(void);
 // Initialize/terminate page address translation.
 int ase_host_memory_initialize(void);
 void ase_host_memory_terminate(void);
+
+#else
+
+void memline_addr_error(const char *access_type,
+						ase_host_memory_status status,
+						uint64_t pa, uint64_t va);
 
 #endif // not SIM_SIDE
 

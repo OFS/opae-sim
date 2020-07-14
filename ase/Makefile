@@ -138,6 +138,8 @@ ASESW_FILE_LIST = \
 	$(ASE_SRCDIR)/sw/ipc_mgmt_ops.c \
 	$(ASE_SRCDIR)/sw/ase_shbuf.c \
 	$(ASE_SRCDIR)/sw/protocol_backend.c \
+	$(ASE_SRCDIR)/sw/pcie_tlp_debug.c \
+	$(ASE_SRCDIR)/sw/pcie_tlp_stream.c \
 	$(ASE_SRCDIR)/sw/tstamp_ops.c \
 	$(ASE_SRCDIR)/sw/mqueue_ops.c \
 	$(ASE_SRCDIR)/sw/error_report.c \
