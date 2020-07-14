@@ -32,6 +32,7 @@
  */
 #include "ase_common.h"
 #include "ase_host_memory.h"
+#include "pcie_tlp_stream.h"
 
 //const int NUM_DS = 10;
 
@@ -47,10 +48,10 @@ static int app2sim_dealloc_rx;
 int sim2app_dealloc_tx;
 static int sim2app_portctrl_rsp_tx;
 static int sim2app_intr_request_tx;
-static int sim2app_membus_rd_req_tx;
-static int app2sim_membus_rd_rsp_rx;
-static int sim2app_membus_wr_req_tx;
-static int app2sim_membus_wr_rsp_rx;
+int sim2app_membus_rd_req_tx;
+int app2sim_membus_rd_rsp_rx;
+int sim2app_membus_wr_req_tx;
+int app2sim_membus_wr_rsp_rx;
 static int intr_event_fds[MAX_USR_INTRS];
 
 int glbl_test_cmplt_cnt;                // Keeps the number of session_deinits received
@@ -119,6 +120,7 @@ struct ase_capability_t ase_capability = {
 #endif
 };
 
+const char *event_log_name = "ccip_transactions.tsv";
 const char *completed_str_msg = (char *)&ase_capability;
 
 /*
@@ -226,9 +228,9 @@ void sv2c_script_dex(const char *str)
 /*
  * Print an error for accesses to illegal (unpinned) addresses.
  */
-static void memline_addr_error(const char *access_type,
-			       ase_host_memory_status status,
-			       uint64_t pa, uint64_t va)
+void memline_addr_error(const char *access_type,
+						ase_host_memory_status status,
+						uint64_t pa, uint64_t va)
 {
 	FUNC_CALL_ENTRY;
 
@@ -238,7 +240,7 @@ static void memline_addr_error(const char *access_type,
 		"          Failure @ byte-level phys_addr = 0x%" PRIx64 "\n" \
 		"                    line-level phys_addr = 0x%" PRIx64 "\n" \
 		"        See ERROR log file ase_memory_error.log and timestamped\n" \
-		"        transactions in ccip_transactions.tsv.\n"
+		"        transactions in %s.\n"
 
 	#define MEMLINE_ADDR_UNPINNED_MSG \
 		"@ERROR: ASE has detected a memory %s to an UNPINNED memory region.\n" \
@@ -246,7 +248,7 @@ static void memline_addr_error(const char *access_type,
 		"          Failure @ byte-level phys_addr = 0x%" PRIx64 "\n" \
 		"                    line-level phys_addr = 0x%" PRIx64 "\n" \
 		"        See ERROR log file ase_memory_error.log and timestamped\n" \
-		"        transactions in ccip_transactions.tsv.\n" \
+		"        transactions in %s.\n" \
 		"@ERROR: Check that previously requested memories have not been deallocated\n" \
 		"        before an AFU transaction could access them.\n" \
 		"        NOTE: If your application polls for an AFU completion message,\n" \
@@ -261,26 +263,26 @@ static void memline_addr_error(const char *access_type,
 		"                    line-level phys_addr = 0x%" PRIx64 "\n" \
 		"                    line-level virtual_addr = 0x%" PRIx64 "\n" \
 		"        See ERROR log file ase_memory_error.log and timestamped\n" \
-		"        transactions in ccip_transactions.tsv.\n" \
+		"        transactions in %s.\n" \
 		"@ERROR: This most often happens when the application munmaps or frees\n" \
 		"        a region before calling fpgaReleaseBuffer().\n"
 
 	FILE *error_fp = fopen("ase_memory_error.log", "w");
 
 	if (status == HOST_MEM_STATUS_ILLEGAL) {
-		ASE_ERR("\n" MEMLINE_ADDR_ILLEGAL_MSG, access_type, pa, pa >> 6);
+		ASE_ERR("\n" MEMLINE_ADDR_ILLEGAL_MSG, access_type, pa, pa >> 6, event_log_name);
 		if (error_fp != NULL) {
-			fprintf(error_fp, MEMLINE_ADDR_ILLEGAL_MSG, access_type, pa, pa >> 6);
+			fprintf(error_fp, MEMLINE_ADDR_ILLEGAL_MSG, access_type, pa, pa >> 6, event_log_name);
 		}
 	} else if (status == HOST_MEM_STATUS_NOT_PINNED) {
-		ASE_ERR("\n" MEMLINE_ADDR_UNPINNED_MSG, access_type, pa, pa >> 6);
+		ASE_ERR("\n" MEMLINE_ADDR_UNPINNED_MSG, access_type, pa, pa >> 6, event_log_name);
 		if (error_fp != NULL) {
-			fprintf(error_fp, MEMLINE_ADDR_UNPINNED_MSG, access_type, pa, pa >> 6);
+			fprintf(error_fp, MEMLINE_ADDR_UNPINNED_MSG, access_type, pa, pa >> 6, event_log_name);
 		}
 	} else if (status == HOST_MEM_STATUS_NOT_MAPPED) {
-		ASE_ERR("\n" MEMLINE_ADDR_UNMAPPED_MSG, access_type, pa, pa >> 6, va);
+		ASE_ERR("\n" MEMLINE_ADDR_UNMAPPED_MSG, access_type, pa, pa >> 6, va, event_log_name);
 		if (error_fp != NULL) {
-			fprintf(error_fp, MEMLINE_ADDR_UNMAPPED_MSG, access_type, pa, pa >> 6, va);
+			fprintf(error_fp, MEMLINE_ADDR_UNMAPPED_MSG, access_type, pa, pa >> 6, va, event_log_name);
 		}
 	} else {
 		ASE_ERR("\n @ERROR: Unknown memory reference error.\n");
@@ -319,17 +321,46 @@ void wr_memline_req_dex(cci_pkt *pkt)
 		 * Takes Write request and performs verbatim
 		 */
 		phys_addr = (uint64_t) pkt->cl_addr << 6;
+		char *payload = (char *) pkt->qword;
 
 		// Write to memory
-		wr_req.req = HOST_MEM_REQ_WRITE_LINE;
-		wr_req.addr = phys_addr;
-		wr_req.byte_en = pkt->byte_en;
-		wr_req.byte_start = pkt->byte_start;
-		wr_req.byte_len = pkt->byte_len;
-
-		ase_memcpy(wr_req.data, (char *) pkt->qword, CL_BYTE_WIDTH);
+		wr_req.req = HOST_MEM_REQ_WRITE;
+		wr_req.byte_en = 0;
+		if (! pkt->byte_en) {
+			wr_req.data_bytes = CL_BYTE_WIDTH;
+			wr_req.addr = phys_addr;
+		}
+		else {
+#ifndef USE_PCIE_BYTE_EN
+			// Normal mode: just encode the byte range directly.
+			wr_req.data_bytes = pkt->byte_len;
+			wr_req.addr = phys_addr + pkt->byte_start;
+			payload += pkt->byte_start;
+#else
+			// PCIe 32 bit DWORD first/last byte enable test mode. Encode the
+			// request using a DWORD-size granularity and byte masks in the
+			// first and last DWORD.
+			wr_req.byte_en = 1;
+			uint32_t fdw_idx = pkt->byte_start / 4;
+			uint32_t ldw_idx = (pkt->byte_start + pkt->byte_len - 1) / 4;
+			wr_req.first_be = (0xf << (pkt->byte_start & 3)) & 0xf;
+			wr_req.last_be = ~(0xf << (0x3 & (pkt->byte_start + pkt->byte_len))) & 0xf;
+			if (wr_req.last_be == 0) wr_req.last_be = 0xf;
+			if (ldw_idx == fdw_idx)
+			{
+				wr_req.first_be &= wr_req.last_be;
+				wr_req.last_be = 0;
+			}
+			wr_req.data_bytes = 4 * (ldw_idx - fdw_idx + 1);
+			wr_req.addr = phys_addr + 4 * fdw_idx;
+			payload += 4 * fdw_idx;
+#endif
+		}
 
 		mqueue_send(sim2app_membus_wr_req_tx, (char *) &wr_req, sizeof(wr_req));
+
+		// Send the data separately
+		mqueue_send(sim2app_membus_wr_req_tx, payload, wr_req.data_bytes);
 
 		// Success
 		pkt->success = 1;
@@ -400,8 +431,9 @@ void rd_memline_req_dex(cci_pkt *pkt)
 
 	phys_addr = (uint64_t) pkt->cl_addr << 6;
 
-	rd_req.req = HOST_MEM_REQ_READ_LINE;
+	rd_req.req = HOST_MEM_REQ_READ;
 	rd_req.addr = phys_addr;
+	rd_req.data_bytes = CL_BYTE_WIDTH;
 	mqueue_send(sim2app_membus_rd_req_tx, (char *) &rd_req, sizeof(rd_req));
 
 	FUNC_CALL_EXIT;
@@ -424,10 +456,18 @@ void rd_memline_rsp_dex(cci_pkt *pkt)
 		if (status == ASE_MSG_PRESENT) {
 			if (rd_rsp.status != HOST_MEM_STATUS_VALID) {
 				memline_addr_error("READ", rd_rsp.status, rd_rsp.pa, rd_rsp.va);
+				break;
 			}
 
-			// Read from memory
-			ase_memcpy((char *) pkt->qword, rd_rsp.data, CL_BYTE_WIDTH);
+			if (rd_rsp.data_bytes != CL_BYTE_WIDTH) {
+				ASE_ERR("\n @ERROR: Unexpected memory read response size (%ld)!\n", rd_rsp.data_bytes);
+				start_simkill_countdown();
+			}
+
+			// Get the data, which was sent separately
+			while ((status = mqueue_recv(app2sim_membus_rd_rsp_rx, (char *) pkt->qword, CL_BYTE_WIDTH)) != ASE_MSG_PRESENT) {
+				if (status == ASE_MSG_ERROR) break;
+			}
 			break;
 		}
 
@@ -755,11 +795,11 @@ err:
  * linked list. The reply consists of the pbase, fakeaddr and fd_ase.
  * When a deallocate message is received, the buffer is invalidated.
  *
- * MMIO Request
- * Calls MMIO Dispatch task in ccip_emulator
+ * When mode is 0, MMIO is handled by the DPI-C method mmio_dispatch.
+ * When mode is 1, MMIO is handled by ase_pcie_tlp_mmio_req.
  *
  * *******************************************************************/
-int ase_listener(void)
+int ase_listener(int mode)
 {
 	// Buffer management variables
 	static struct buffer_t ase_buffer;
@@ -782,6 +822,12 @@ int ase_listener(void)
 	char umsg_mode_msg[ASE_LOGGER_LEN];
 
 	//   FUNC_CALL_ENTRY;
+
+    if (mode == 1)
+    {
+        // PCIe TLP mode
+        event_log_name = "log_ase_events.tsv";
+    }
 
 	// ---------------------------------------------------------------------- //
 	/*
@@ -1071,7 +1117,12 @@ int ase_listener(void)
 			print_mmiopkt(fp_memaccess_log, "MMIO Sent",
 				      incoming_mmio_pkt);
 #endif
-			mmio_dispatch(0, incoming_mmio_pkt);
+			if (mode == 0) {
+				mmio_dispatch(0, incoming_mmio_pkt);
+			}
+			else {
+				pcie_mmio_new_req(incoming_mmio_pkt);
+			}
 		}
 		// ------------------------------------------------------------------------------- //
 		/*
@@ -1399,7 +1450,7 @@ void start_simkill_countdown(void)
 	// Print location of log files
 	ASE_INFO("Simulation generated log files\n");
 	ASE_INFO
-		("        Transactions file       | $ASE_WORKDIR/ccip_transactions.tsv\n");
+		("        Transactions file       | $ASE_WORKDIR/%s\n", event_log_name);
 	ASE_INFO
 		("        Workspaces info         | $ASE_WORKDIR/workspace_info.log\n");
 	if (access(ccip_sniffer_file_statpath, F_OK) != -1) {

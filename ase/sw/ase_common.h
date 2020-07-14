@@ -346,7 +346,9 @@ typedef struct mmio_t {
 	int32_t addr;
 	uint64_t qword[8];
 	int32_t resp_en;
-	int32_t dummy;        // For 64 bit alignment
+	int32_t slot_idx;	// Unique scoreboard slot index (less than
+						// MMIO_MAX_OUTSTANDING). Tid is also unique,
+						// but in a larger space.
 } mmio_t;
 
 
@@ -504,7 +506,6 @@ extern "C" {
 	void append_buf(struct buffer_t *);
 	void free_buffers(void);
 	// MMIO activity
-	int find_empty_mmio_scoreboard_slot(void);
 	int get_scoreboard_slot_by_tid(int);
 	int count_mmio_tid_used(void);
 	uint32_t generate_mmio_tid(void);
@@ -692,7 +693,7 @@ extern void ase_config_dex(struct ase_cfg_t *);
 int ase_init(void);
 int ase_ready(void);
 void ase_write_lock_file(void);
-int ase_listener(void);
+int ase_listener(int mode);
 void ase_config_parse(char *);
 
 // Simulation control function
@@ -767,8 +768,11 @@ extern int self_destruct_in_progress;
  */
 #ifdef SIM_SIDE
 extern int sim2app_alloc_tx;		// sim2app mesaage queue in TX mode
-
 extern int sim2app_dealloc_tx;
+extern int sim2app_membus_rd_req_tx;
+extern int app2sim_membus_rd_rsp_rx;
+extern int sim2app_membus_wr_req_tx;
+extern int app2sim_membus_wr_rsp_rx;
 #endif				// End SIM_SIDE
 
 // There is no global fixes for this

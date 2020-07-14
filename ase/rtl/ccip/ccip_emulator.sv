@@ -291,7 +291,7 @@ module ccip_emulator
     import "DPI-C" context function void scope_function();
 
     // Global listener function
-    import "DPI-C" context task ase_listener();
+    import "DPI-C" context task ase_listener(int mode);
 
     // Unordered message dispatch
    `ifdef ASE_ENABLE_UMSG_FEATURE
@@ -1328,7 +1328,7 @@ module ccip_emulator
      *
      * *******************************************************************/
     always @(posedge clk) begin : daemon_proc
-        ase_listener();
+        ase_listener(0);
     end
 
 
