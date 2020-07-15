@@ -178,6 +178,22 @@ static void tlp_hdr_unpack(t_tlp_hdr_upk *tlp_upk, const svBitVecVal *hdr)
 
 // ========================================================================
 //
+//  Utilities
+//
+// ========================================================================
+
+static unsigned long next_rand = 1;
+
+// Local repeatable random number generator
+int pcie_tlp_rand(void)
+{
+    next_rand = next_rand * 1103515245 + 12345;
+    return ((unsigned)(next_rand/65536) % 32768);
+}
+
+
+// ========================================================================
+//
 //  MMIO state
 //
 // ========================================================================
@@ -517,7 +533,15 @@ static void pcie_tlp_a2h_mrd(
     ase_host_memory_read_req rd_req;
     rd_req.req = HOST_MEM_REQ_READ;
     rd_req.addr = hdr->u.mem.addr;
-    rd_req.data_bytes = hdr->dw0.length * 4;
+    if ((hdr->dw0.length == 1) && ! hdr->u.mem.last_be && ! hdr->u.mem.first_be)
+    {
+        // Single word read with all bytes disabled -- a fence
+        rd_req.data_bytes = 0;
+    }
+    else
+    {
+        rd_req.data_bytes = hdr->dw0.length * 4;
+    }
     rd_req.tag = hdr->u.mem.tag;
     mqueue_send(sim2app_membus_rd_req_tx, (char *)&rd_req, sizeof(rd_req));
 
@@ -582,9 +606,11 @@ static void pcie_receive_dma_reads()
             }
 
             // Get the data, which was sent separately
-            uint32_t *buf = read_rsp_data[rd_rsp.tag];
-            while ((status = mqueue_recv(app2sim_membus_rd_rsp_rx, (char *)buf, rd_rsp.data_bytes)) != ASE_MSG_PRESENT) {
-                if (status == ASE_MSG_ERROR) break;
+            if (rd_rsp.data_bytes) {
+                uint32_t *buf = read_rsp_data[rd_rsp.tag];
+                while ((status = mqueue_recv(app2sim_membus_rd_rsp_rx, (char *)buf, rd_rsp.data_bytes)) != ASE_MSG_PRESENT) {
+                    if (status == ASE_MSG_ERROR) break;
+                }
             }
 
             num_dma_reads_pending -= 1;
@@ -818,6 +844,10 @@ static bool pcie_tlp_h2a_cpld(
     }
     else if (dma_read_rsp_head)
     {
+        // Refuse to start a new packet randomly in order to make the
+        // channel use pattern more complicated.
+        if ((pcie_tlp_rand() & 0xff) > 0x1f) return true;
+
         tdata->valid = 1;
         tdata->sop = 1;
 

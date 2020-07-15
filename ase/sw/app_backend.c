@@ -1674,13 +1674,21 @@ static void *membus_rd_watcher(void *arg)
 			rd_rsp.va = ase_host_memory_pa_to_va(rd_req.addr, true);
 			rd_rsp.data_bytes = rd_req.data_bytes;
 			rd_rsp.tag = rd_req.tag;
-			rd_rsp.status = membus_op_status(rd_rsp.va, rd_rsp.pa, rd_req.data_bytes);
-			if (rd_rsp.status != HOST_MEM_STATUS_VALID) {
-				rd_rsp.data_bytes = 0;
+			if (rd_rsp.data_bytes != 0)
+			{
+				rd_rsp.status = membus_op_status(rd_rsp.va, rd_rsp.pa, rd_req.data_bytes);
+				if (rd_rsp.status != HOST_MEM_STATUS_VALID) {
+					rd_rsp.data_bytes = 0;
+				}
+			}
+			else
+			{
+				// Length zero read: a memory fence
+				rd_rsp.status = HOST_MEM_STATUS_VALID;
 			}
 
 			mqueue_send(app2sim_membus_rd_rsp_tx, (char *) &rd_rsp, sizeof(rd_rsp));
-			if (rd_rsp.status == HOST_MEM_STATUS_VALID) {
+			if ((rd_rsp.status == HOST_MEM_STATUS_VALID) && rd_rsp.data_bytes) {
 				mqueue_send(app2sim_membus_rd_rsp_tx, (char *) rd_rsp.va, rd_rsp.data_bytes);
 			}
 
