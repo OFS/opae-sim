@@ -736,6 +736,10 @@ static bool pcie_tlp_h2a_mem(
         // such as NLB, doesn't deal well with dense MMIO traffic.
         if ((cycle - last_mmio_req_cycle) < 63) return true;
 
+        // Refuse to start a new packet randomly in order to make the
+        // channel use pattern more complicated.
+        if ((pcie_tlp_rand() & 0xff) > 0xd0) return true;
+
         mmio_pkt = &mmio_req_head->mmio_pkt;
 
         tdata->valid = 1;
