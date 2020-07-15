@@ -129,6 +129,7 @@ void fprintf_tlp_afu_to_host(
         fprintf_tlp_payload(stream, tdata->payload, 0);
     }
     fprintf(stream, "\n");
+    fflush(stream);
 }
 
 void fprintf_tlp_host_to_afu(
@@ -149,4 +150,5 @@ void fprintf_tlp_host_to_afu(
         fprintf_tlp_payload(stream, tdata->payload, 0);
     }
     fprintf(stream, "\n");
+    fflush(stream);
 }

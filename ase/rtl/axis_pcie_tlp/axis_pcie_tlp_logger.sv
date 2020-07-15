@@ -41,88 +41,72 @@ module axis_pcie_tlp_logger
     // Buffer message injection
     input logic log_timestamp_en,
     input logic log_string_en,
-    ref string 	log_string,
+    ref string  log_string,
 
     input logic clk,
     input logic SoftReset
     );
 
-   // Log file descriptor
-   int log_fd;
+    import "DPI-C" context function void pcie_tlp_open_logfile(string logname);
+    import "DPI-C" context function void pcie_tlp_write_logfile(string msg);
 
-   // Reset management
-   logic SoftReset_q;
+    // Reset management
+    logic SoftReset_q;
 
-   string softreset_str;
+    string msg;
 
-   // Registers for comparing previous states
-   always @(posedge clk) begin
-      SoftReset_q <= SoftReset;
-   end
+    // Registers for comparing previous states
+    always @(posedge clk) begin
+        SoftReset_q <= SoftReset;
+    end
 
-   /*
-    * FUNCTION: print_and_post_log wrapper function to simplify logging
-    */
-   function void print_and_post_log(string formatted_string);
-      begin
-	 if (stdout_en)
-	   $display(formatted_string);
-	 $fwrite(log_fd, formatted_string);
-	 $fflush();
-      end
-   endfunction // print_and_post_log
+    /*
+     * FUNCTION: print_and_post_log wrapper function to simplify logging
+     */
+    function void print_and_post_log(string formatted_string);
+        if (stdout_en)
+          $display(formatted_string);
+        pcie_tlp_write_logfile(formatted_string);
+    endfunction // print_and_post_log
 
-   /*
-    * Watcher process
-    */
-   initial begin : logger_proc
-      // Display
-      $display("  [SIM]  Transaction Logger started");
+    /*
+     * Watcher process
+     */
+    initial begin : logger_proc
+        // Display
+        $display("  [SIM]  Transaction Logger started");
 
-      // Open transactions.tsv file
-      log_fd = $fopen(LOGNAME, "w");
+        // Open transactions.tsv file
+        pcie_tlp_open_logfile(LOGNAME);
 
-      // Watch CCI port
-      forever begin
-	 // -------------------------------------------------- //
-	 // Indicate Software controlled reset
-	 // -------------------------------------------------- //
-	 if (SoftReset_q != SoftReset) begin
-	    $sformat(softreset_str,
-		     "%d\tSoftReset toggled from %b to %b\n",
-		     $time,
-		     SoftReset_q,
-		     SoftReset);
-	    print_and_post_log(softreset_str);
-	 end
+        forever begin
+            // -------------------------------------------------- //
+            // Indicate Software controlled reset
+            // -------------------------------------------------- //
+            if (SoftReset_q != SoftReset) begin
+                $sformat(msg,
+                         "%d\tSoftReset toggled from %b to %b\n",
+                         $time,
+                         SoftReset_q,
+                         SoftReset);
+                print_and_post_log(msg);
+            end
 
-	 // -------------------------------------------------- //
-	 // Buffer messages
-	 // -------------------------------------------------- //
-	 if (log_string_en) begin
-	    if (log_timestamp_en) begin
-	       $fwrite(log_fd, "-----------------------------------------------------\n");
-	       $fwrite(log_fd, "%d\t%s\n", $time, log_string);
-	    end
-	    else begin
-	       $fwrite(log_fd, "-----------------------------------------------------\n");
-	       $fwrite(log_fd, "%s\n", log_string);
-	    end
-	 end
+            // -------------------------------------------------- //
+            // Buffer messages
+            // -------------------------------------------------- //
+            if (log_string_en) begin
+                if (log_timestamp_en) begin
+                    $sformat(msg, "-----------------------------------------------------\n%d\t%s\n", $time, log_string);
+                end
+                else begin
+                    $sformat(msg, "-----------------------------------------------------\n%s\n", log_string);
+                end
+                pcie_tlp_write_logfile(msg);
+            end
 
-	 // -------------------------------------------------- //
-	 // FINISH command
-	 // -------------------------------------------------- //
-	 if (finish_logger == 1) begin
-	    $fclose(log_fd);
-	 end
-
-	 // -------------------------------------------------- //
-	 // Wait till next clock
-	 // -------------------------------------------------- //
-	 $fflush(log_fd);
-	 @(posedge clk);
-      end
-   end
+            @(posedge clk);
+        end
+    end
 
 endmodule

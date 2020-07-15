@@ -34,6 +34,8 @@
 #include "ase_host_memory.h"
 #include "pcie_tlp_stream.h"
 
+static FILE *logfile;
+
 static t_ase_axis_param_cfg param_cfg;
 static bool in_reset;
 static uint64_t cur_cycle;
@@ -795,7 +797,7 @@ static bool pcie_tlp_h2a_mem(
             mmio_req_dw_rem -= req_dw;
         }
 
-        fprintf_tlp_host_to_afu(stdout, cycle, ch, &hdr, tdata, tuser);
+        fprintf_tlp_host_to_afu(logfile, cycle, ch, &hdr, tdata, tuser);
     }
 
     // Pop request
@@ -846,7 +848,7 @@ static bool pcie_tlp_h2a_cpld(
     {
         // Refuse to start a new packet randomly in order to make the
         // channel use pattern more complicated.
-        if ((pcie_tlp_rand() & 0xff) > 0x1f) return true;
+        if ((pcie_tlp_rand() & 0xff) > 0xd0) return true;
 
         tdata->valid = 1;
         tdata->sop = 1;
@@ -887,7 +889,7 @@ static bool pcie_tlp_h2a_cpld(
 
         dma_read_rsp_dw_rem -= rsp_dw;
 
-        fprintf_tlp_host_to_afu(stdout, cycle, ch, &hdr, tdata, tuser);
+        fprintf_tlp_host_to_afu(logfile, cycle, ch, &hdr, tdata, tuser);
     }
 
     // Pop request
@@ -1048,7 +1050,7 @@ int pcie_tlp_stream_afu_to_host_ch(
     t_tlp_hdr_upk hdr;
     tlp_hdr_unpack(&hdr, tdata->hdr);
 
-    fprintf_tlp_afu_to_host(stdout, cycle, ch, &hdr, tdata, tuser);
+    fprintf_tlp_afu_to_host(logfile, cycle, ch, &hdr, tdata, tuser);
 
     switch (afu_to_host_state)
     {
@@ -1141,7 +1143,7 @@ int pcie_tlp_stream_afu_to_host_tready(
 {
     cur_cycle = cycle;
 
-    return cycle & 1;
+    return true;
 }
 
 
@@ -1156,5 +1158,35 @@ int pcie_host_to_afu_irq_rsp(
 {
     irq_rsp->tvalid = 0;
 
+    return 0;
+}
+
+
+//
+// Open a log file. The SystemVerilog PCIe emulator and the C code share the
+// same log file.
+//
+int pcie_tlp_open_logfile(
+    const char *logname
+)
+{
+    logfile = fopen(logname, "w");
+    if (logfile == NULL)
+    {
+        fprintf(stderr, "Failed to open log file: %s\n", logname);
+        logfile = stdout;
+    }
+    return logfile ? 0 : 1;
+}
+
+//
+// Write a message to the shared log file.
+//
+int pcie_tlp_write_logfile(
+    const char *msg
+)
+{
+    fprintf(logfile, "%s", msg);
+    fflush(logfile);
     return 0;
 }
