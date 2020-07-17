@@ -1147,7 +1147,8 @@ int pcie_tlp_stream_afu_to_host_tready(
 {
     cur_cycle = cycle;
 
-    return true;
+    // Random back-pressure
+    return ((pcie_tlp_rand() & 0xff) > 0x10);
 }
 
 
