@@ -263,8 +263,9 @@ package ase_sim_pkg;
         `END_YELLOW_FONTCOLOR;
         end
 `else
-        $value$plusargs("CONFIG=%S", config_filepath);
-        $value$plusargs("SCRIPT=%S", script_filepath);
+        int r;
+        r = $value$plusargs("CONFIG=%S", config_filepath);
+        r = $value$plusargs("SCRIPT=%S", script_filepath);
 `endif
     endtask // conig_filepath_init
 
