@@ -62,6 +62,7 @@ package axis_pcie_tlp_pkg;
     typedef struct {
         bit [255:0] payload;
         bit [127:0] hdr;
+        byte irq_id;    // Used only by AFU->host when afu_irq is set in tuser
         byte eop;
         byte sop;
         byte valid;

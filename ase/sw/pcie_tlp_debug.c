@@ -122,12 +122,22 @@ void fprintf_tlp_afu_to_host(
 {
     fprintf(stream, "afu_to_host: %lld ch%d %s %s ", cycle, ch,
             (tdata->sop ? "sop" : "   "), (tdata->eop ? "eop" : "   "));
-    if (tdata->sop) fprintf_tlp_hdr(stream, hdr);
-    if (!tdata->sop || tlp_func_has_data(hdr->dw0.fmttype))
+
+    // Interrupt? Special format if it is.
+    if (tuser->afu_irq)
     {
-        fprintf(stream, " ");
-        fprintf_tlp_payload(stream, tdata->payload, 0);
+        fprintf(stream, "irq_id %d", tdata->irq_id);
     }
+    else
+    {
+        if (tdata->sop) fprintf_tlp_hdr(stream, hdr);
+        if (!tdata->sop || tlp_func_has_data(hdr->dw0.fmttype))
+        {
+            fprintf(stream, " ");
+            fprintf_tlp_payload(stream, tdata->payload, 0);
+        }
+    }
+
     fprintf(stream, "\n");
     fflush(stream);
 }

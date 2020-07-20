@@ -254,6 +254,7 @@ typedef struct {
 typedef struct {
     svBitVecVal payload[8];
     svBitVecVal hdr[4];
+    uint8_t irq_id;    // Used only by AFU->host when afu_irq is set in tuser
     uint8_t eop;
     uint8_t sop;
     uint8_t valid;

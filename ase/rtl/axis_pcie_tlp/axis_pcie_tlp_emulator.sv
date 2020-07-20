@@ -43,7 +43,7 @@ module axis_pcie_tlp_emulator
     parameter MAX_OUTSTANDING_DMA_RD_REQS = 256,
     // MMIO tags must be less than this value
     parameter MAX_OUTSTANDING_MMIO_RD_REQS = 64,
-    parameter NUM_AFU_INTERRUPTS = 7,
+    parameter NUM_AFU_INTERRUPTS = 4,
     // Maximum length of a full payload (over multiple cycles)
     parameter MAX_PAYLOAD_BYTES = 256,
     // Minimum size and alignment of a read completion (RCB)
@@ -423,13 +423,19 @@ module axis_pcie_tlp_emulator
 
 
     // Map TLP channel message for sending via DPI-C to the SystemVerilog type
+    ofs_fim_if_pkg::t_axis_irq_tdata tx_irq_data[NUM_TLP_CHANNELS];
+
     task map_tx_tlp_ch(int ch);
         tx_tdata[ch].valid = { '0, pcie_tlp_if.afu_tx_st.t.data[ch].valid };
         tx_tdata[ch].sop = { '0, pcie_tlp_if.afu_tx_st.t.data[ch].sop };
         tx_tdata[ch].eop = { '0, pcie_tlp_if.afu_tx_st.t.data[ch].eop };
         tx_tdata[ch].payload = pcie_tlp_if.afu_tx_st.t.data[ch].payload;
         tx_tdata[ch].hdr = pcie_tlp_if.afu_tx_st.t.data[ch].hdr;
+
+        // Only for interrupts
         tx_tuser[ch].afu_irq = { '0, pcie_tlp_if.afu_tx_st.t.user[ch].afu_irq };
+        tx_irq_data[ch] = ofs_fim_if_pkg::t_axis_irq_tdata'(pcie_tlp_if.afu_tx_st.t.data[ch].hdr);
+        tx_tdata[ch].irq_id = tx_irq_data[ch].irq_id;
     endtask // map_tx_tlp_ch
 
     // Send one cycle's worth of TLP data via DPI-C. tvalid is already known true.
