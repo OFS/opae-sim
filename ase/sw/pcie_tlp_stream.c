@@ -199,10 +199,88 @@ static void tlp_hdr_unpack(
 static unsigned long next_rand = 1;
 
 // Local repeatable random number generator
-int pcie_tlp_rand(void)
+static int pcie_tlp_rand(void)
 {
     next_rand = next_rand * 1103515245 + 12345;
     return ((unsigned)(next_rand/65536) % 32768);
+}
+
+// Offset to add to lower_addr due to masked bytes at the start of a read
+// completion.
+//
+// Based on PCIe standard, table 2-39 in 2.3.1.1 Data Return for Read Requests.
+static uint8_t pcie_cpl_lower_addr_byte_offset(uint8_t first_be)
+{
+    uint8_t offset = 0;
+
+    // Zero-length read (fence)?
+    if (first_be == 0) return 0;
+
+    // Count zeros in the low bits of first_be mask
+    while ((first_be & 1) == 0)
+    {
+        offset += 1;
+        first_be >>= 1;
+    }
+
+    return offset;
+}
+
+// Byte count for read completion given length and byte masks.
+//
+// Based on PCIe standard, table 2-38 in 2.3.1.1 Data Return for Read Requests.
+static uint16_t pcie_cpl_byte_count(
+    uint16_t length,
+    uint8_t first_be,
+    uint8_t last_be
+)
+{
+    if (first_be == 0)
+    {
+        // Sanity check. These are supposed to be checked already when
+        // reads arrive.
+        if ((last_be != 0) || (length != 1))
+        {
+            fprintf(stderr, "Unexpected last_be and length\n");
+            start_simkill_countdown();
+            exit(1);
+        }
+
+        return 1;
+    }
+
+    if (last_be == 0)
+    {
+        if (length != 1)
+        {
+            fprintf(stderr, "Unexpected last_be and length\n");
+            start_simkill_countdown();
+            exit(1);
+        }
+
+        last_be = first_be;
+    }
+
+    //
+    // Byte length is the length (in DWORDS) minus the number of masked
+    // out bytes at the beginning and end. At this point we know that
+    // both first_be and last_be have at least one bit set.
+    //
+    uint16_t byte_count = length * 4;
+
+    while ((first_be & 1) == 0)
+    {
+        byte_count -= 1;
+        first_be >>= 1;
+    }
+
+    while ((last_be & 0x8) == 0)
+    {
+        byte_count -= 1;
+        last_be <<= 1;
+    }
+
+    return byte_count;
 }
 
 
@@ -247,22 +325,44 @@ static uint64_t last_mmio_req_cycle;
 
 typedef struct dma_read_state
 {
-    struct dma_read_state *next;
     uint64_t start_cycle;
     t_tlp_hdr_upk req_hdr;
     bool busy;
 } t_dma_read_state;
 
-static t_dma_read_state *dma_read_rsp_head;
-static t_dma_read_state *dma_read_rsp_tail;
-
-// Number of DWORDs remaining in current host to AFU read completion
-static uint32_t dma_read_rsp_dw_rem;
-
 // Vector of DMA read states, indexed by what must be unique PCIe
 // transaction IDs. The number of IDs is set by pcie_param_init(), which
 // allocates the vector.
 static t_dma_read_state *dma_read_state;
+
+// Read completion may be broken into multiple packets, depending on
+// the request completion boundary. A linked list of responses is generated,
+// where multiple entries in the list may point to the same t_dma_read_state.
+// PCIe requires that they be on the list in increasing address order.
+typedef struct dma_read_cpl
+{
+    struct dma_read_cpl *next;
+    struct dma_read_cpl *prev;
+    t_dma_read_state *state;
+    // Length of this individual packet
+    uint16_t length;
+    // Offset to the DW of the data for this packet. Non-zero only when
+    // the completion is broken into multiple packets.
+    uint16_t start_dw;
+    // Standard PCIe byte count of all remaining bytes to complete the
+    // original request. Byte count may be larger than the length of this
+    // packet.
+    uint16_t byte_count;
+    // Is this the first response packet for the request?
+    bool is_first;
+    // Is this the last response packet for the request?
+    bool is_last;
+} t_dma_read_cpl;
+static t_dma_read_cpl *dma_read_cpl_head;
+static t_dma_read_cpl *dma_read_cpl_tail;
+
+// Number of DWORDs remaining in current host to AFU read completion
+static uint32_t dma_read_cpl_dw_rem;
 
 static uint32_t num_dma_reads_pending;
 static uint32_t num_dma_writes_pending;
@@ -461,9 +561,24 @@ static void pcie_tlp_a2h_mwr(
                     param_cfg.max_payload_bytes);
             pcie_tlp_a2h_error_and_kill(cycle, ch, &hdr, tdata, tuser);
         }
+        if (hdr.dw0.length == 0)
+        {
+            ASE_ERR("AFU Tx TLP - DMA write length is 0:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, ch, &hdr, tdata, tuser);
+        }
+        if (hdr.u.mem.first_be == 0)
+        {
+            ASE_ERR("AFU Tx TLP - DMA write first_be is 0:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, ch, &hdr, tdata, tuser);
+        }
         if ((hdr.dw0.length == 1) && (hdr.u.mem.last_be != 0))
         {
             ASE_ERR("AFU Tx TLP - DMA write last_be must be 0 on single DWORD writes:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, ch, &hdr, tdata, tuser);
+        }
+        if ((hdr.dw0.length > 1) && (hdr.u.mem.last_be == 0))
+        {
+            ASE_ERR("AFU Tx TLP - DMA write last_be is 0 on a multiple DWORD write:\n");
             pcie_tlp_a2h_error_and_kill(cycle, ch, &hdr, tdata, tuser);
         }
     }
@@ -552,6 +667,31 @@ static void pcie_tlp_a2h_mrd(
         pcie_tlp_a2h_error_and_kill(cycle, ch, hdr, tdata, tuser);
     }
 
+    if (hdr->dw0.length == 0)
+    {
+        ASE_ERR("AFU Tx TLP - DMA read length is 0:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, ch, hdr, tdata, tuser);
+    }
+
+    if ((hdr->u.mem.first_be == 0) &&
+        ((hdr->u.mem.last_be != 0) || (hdr->dw0.length != 1)))
+    {
+        ASE_ERR("AFU Tx TLP - DMA read first_be is 0 and not a zero-length read (fence):\n");
+        pcie_tlp_a2h_error_and_kill(cycle, ch, hdr, tdata, tuser);
+    }
+
+    if ((hdr->dw0.length == 1) && (hdr->u.mem.last_be != 0))
+    {
+        ASE_ERR("AFU Tx TLP - DMA read last_be must be 0 on single DWORD reads:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, ch, hdr, tdata, tuser);
+    }
+
+    if ((hdr->dw0.length > 1) && (hdr->u.mem.last_be == 0))
+    {
+        ASE_ERR("AFU Tx TLP - DMA read last_be is 0 on a multiple DWORD read:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, ch, hdr, tdata, tuser);
+    }
+
     if (hdr->u.mem.tag >= param_cfg.max_outstanding_dma_rd_reqs)
     {
         ASE_ERR("AFU Tx TLP - Illegal DMA read request tag:\n");
@@ -567,7 +707,6 @@ static void pcie_tlp_a2h_mrd(
 
     // Record read request
     dma_read_state[tag].busy = true;
-    dma_read_state[tag].next = NULL;
     dma_read_state[tag].start_cycle = cycle;
     memcpy(&dma_read_state[tag].req_hdr, hdr, sizeof(t_tlp_hdr_upk));
 
@@ -626,6 +765,99 @@ static void pcie_complete_dma_writes()
     }
 }
 
+
+//
+// Pick a random read completion length in order to simulate PCIe breaking
+// apart completions in read-completion-boundary-sized chunks or larger.
+//
+static inline uint32_t random_cpl_length(uint32_t length_rem)
+{
+    uint32_t length;
+
+    if (length_rem > (param_cfg.request_completion_boundary / 4))
+    {
+        // Pick a random length, between the RCB and the total
+        // payload size.
+        uint32_t max_chunks = param_cfg.max_payload_bytes /
+                              param_cfg.request_completion_boundary;
+        uint32_t rand_chunks = 1 + (pcie_tlp_rand() % max_chunks);
+        // Random length (in DWORDs, like length_rem)
+        uint32_t rand_length = rand_chunks * param_cfg.request_completion_boundary / 4;
+
+        // Limit length to the random number of chunks
+        length = (length_rem <= rand_length) ? length_rem : rand_length;
+    }
+    else
+    {
+        length = length_rem;
+    }
+
+    return length;
+}
+
+
+//
+// Push a read completion onto the list of pending host to AFU completions.
+//
+static void push_new_read_cpl(t_dma_read_cpl *read_cpl)
+{
+    // Add some randomization of read completion ordering. PCIe allows reordering
+    // of read responses, except that when a request is broken into multiple
+    // responses those responses must be ordered relative to each other.
+
+    // Pick a random number of current responses to put after this new one
+    int r = pcie_tlp_rand() & 0xff;
+    int n_later_rsp;
+    if (r >= 0x80)
+        n_later_rsp = 0;
+    else if (r >= 0x20)
+        n_later_rsp = 5;
+    else if (r >= 0x10)
+        n_later_rsp = 2;
+    else
+        n_later_rsp = 1;
+
+    // Walk back n_later_rsp responses
+    t_dma_read_cpl *prev_cpl = dma_read_cpl_tail;
+    while (n_later_rsp--)
+    {
+        if (NULL != prev_cpl)
+        {
+            // Responses for the same request? Can't reorder then.
+            if (prev_cpl->state == read_cpl->state) break;
+
+            // Never switch with head. It might already be in the middle of
+            // a response to the AFU.
+            if (prev_cpl == dma_read_cpl_head) break;
+
+            prev_cpl = prev_cpl->prev;
+        }
+    }
+
+    // Put the new read completion after prev_cpl.
+    read_cpl->prev = prev_cpl;
+    if (prev_cpl != NULL)
+    {
+        read_cpl->next = prev_cpl->next;
+        prev_cpl->next = read_cpl;
+    }
+    else
+    {
+        read_cpl->next = NULL;
+        dma_read_cpl_head = read_cpl;
+    }
+
+    if (read_cpl->next != NULL)
+    {
+        read_cpl->next->prev = read_cpl;
+    }
+    else
+    {
+        dma_read_cpl_tail = read_cpl;
+    }
+}
+
+
 static void pcie_receive_dma_reads()
 {
     while (num_dma_reads_pending)
@@ -657,18 +889,67 @@ static void pcie_receive_dma_reads()
             num_dma_reads_pending -= 1;
 
             // Push the read on the list of pending PCIe completions
-            uint32_t tag = rd_rsp.tag;
-            if (dma_read_rsp_tail == NULL)
+            t_dma_read_state *rd_state = &dma_read_state[rd_rsp.tag];
+            const t_tlp_hdr_upk *req_hdr = &rd_state->req_hdr;
+
+            //
+            // If the read response is large then it might be broken apart into
+            // multiple response packets. Simulate that, randomizing the size
+            // decisions.
+            //
+
+            // Total DWORD length of the response
+            uint32_t length_rem = req_hdr->dw0.length;
+            // Total bytes of the response, accounting for masks
+            uint32_t byte_count_rem =
+                pcie_cpl_byte_count(length_rem,
+                                    req_hdr->u.mem.first_be,
+                                    req_hdr->u.mem.last_be);
+            // Offset of the read data for the current packet
+            uint32_t start_dw = 0;
+
+            // Loop until the entire payload has completion packets
+            do
             {
-                dma_read_rsp_head = &dma_read_state[tag];
+                t_dma_read_cpl *read_cpl = ase_malloc(sizeof(t_dma_read_cpl));
+                read_cpl->state = rd_state;
+
+                // Pick a random length, between the request completion
+                // boundary and the total payload size.
+                uint32_t this_length = random_cpl_length(length_rem);
+
+                bool is_first = (start_dw == 0);
+                bool is_last = (this_length == length_rem);
+
+                read_cpl->length = this_length;
+                read_cpl->start_dw = start_dw;
+                // PCIe expects the total remaining byte count for this and all
+                // future packets for the original request as "byte_count".
+                read_cpl->byte_count = byte_count_rem;
+                read_cpl->is_first = is_first;
+                read_cpl->is_last = is_last;
+
+                // Push this completion on the list of pending messages
+                push_new_read_cpl(read_cpl);
+
+                // Subtract the length of the current completion from the total
+                byte_count_rem = byte_count_rem -
+                    pcie_cpl_byte_count(this_length,
+                                        is_first ? req_hdr->u.mem.first_be : 0xf,
+                                        is_last ? req_hdr->u.mem.last_be : 0xf);
+                length_rem -= this_length;
+                start_dw += this_length;
+
+                // Check the algorithm -- is_last implies no remaining data.
+                assert((length_rem == 0) == is_last);
             }
-            else
-            {
-                dma_read_rsp_tail->next = &dma_read_state[tag];
-            }
-            dma_read_rsp_tail = &dma_read_state[tag];
+            while (length_rem > 0);
+
+            // The algorithm above is broken if this assertion fails. All
+            // bytes should have been handled.
+            assert(byte_count_rem == 0);
         }
-        else
+        else if (status != ASE_MSG_ABSENT)
         {
             break;
         }
@@ -898,7 +1179,7 @@ static bool pcie_tlp_h2a_mem(
         {
             mmio_req_tail = NULL;
         }
-        ase_free_buffer((char *)m);
+        free(m);
     }
 
     return !tdata->valid || tdata->eop;
@@ -917,23 +1198,25 @@ static bool pcie_tlp_h2a_cpld(
 {
     uint32_t rsp_dw = 0;
     uint32_t start_dw;
-    t_dma_read_state *dma_rsp = dma_read_rsp_head;
+    t_dma_read_cpl *dma_cpl = dma_read_cpl_head;
+    const t_tlp_hdr_upk *req_hdr = NULL;
     t_tlp_hdr_upk hdr;
 
     tdata->valid = 0;
     tdata->sop = 0;
     tdata->eop = 0;
 
-    if (dma_read_rsp_dw_rem)
+    if (dma_read_cpl_dw_rem)
     {
         // In the middle of a completion
         tdata->valid = 1;
 
         // Fill the channel or return whatever remains of the packet
-        rsp_dw = dma_read_rsp_dw_rem;
-        start_dw = dma_rsp->req_hdr.dw0.length - dma_read_rsp_dw_rem;
+        rsp_dw = dma_read_cpl_dw_rem;
+        req_hdr = &dma_cpl->state->req_hdr;
+        start_dw = dma_cpl->start_dw + dma_cpl->length - dma_read_cpl_dw_rem;
     }
-    else if (dma_read_rsp_head)
+    else if (dma_read_cpl_head)
     {
         // Refuse to start a new packet randomly in order to make the
         // channel use pattern more complicated.
@@ -942,19 +1225,24 @@ static bool pcie_tlp_h2a_cpld(
         tdata->valid = 1;
         tdata->sop = 1;
 
+        req_hdr = &dma_cpl->state->req_hdr;
         tlp_hdr_reset(&hdr);
         hdr.dw0.fmttype = PCIE_FMTTYPE_CPLD;
-        hdr.dw0.length = dma_rsp->req_hdr.dw0.length;
-        hdr.u.cpl.byte_count = dma_rsp->req_hdr.dw0.length * 4;
-        hdr.u.cpl.tag = dma_rsp->req_hdr.u.mem.tag;
-        hdr.u.cpl.lower_addr = dma_rsp->req_hdr.u.mem.addr;
+        hdr.dw0.length = dma_cpl->length;
+        hdr.u.cpl.byte_count = dma_cpl->byte_count;
+        hdr.u.cpl.tag = req_hdr->u.mem.tag;
+        hdr.u.cpl.lower_addr = req_hdr->u.mem.addr + (dma_cpl->start_dw * 4);
+        if (dma_cpl->is_first)
+        {
+            hdr.u.cpl.lower_addr += pcie_cpl_lower_addr_byte_offset(req_hdr->u.mem.first_be);
+        }
 
         tlp_hdr_pack(tdata->hdr, &hdr);
-        dma_read_rsp_dw_rem = dma_rsp->req_hdr.dw0.length;
+        dma_read_cpl_dw_rem = dma_cpl->length;
 
         // Fill the channel or return whatever remains of the packet
-        rsp_dw = dma_rsp->req_hdr.dw0.length;
-        start_dw = 0;
+        rsp_dw = dma_cpl->length;
+        start_dw = dma_cpl->start_dw;
     }
 
     if (tdata->valid)
@@ -970,13 +1258,13 @@ static bool pcie_tlp_h2a_cpld(
         }
 
         // Copy the next data group to the channel
-        const uint32_t *rsp_data = read_rsp_data[dma_rsp->req_hdr.u.mem.tag];
+        const uint32_t *rsp_data = read_rsp_data[req_hdr->u.mem.tag];
         for (int i = 0; i < rsp_dw; i += 1)
         {
             svPutPartselBit(tdata->payload, rsp_data[start_dw + i], i*32, 32);
         }
 
-        dma_read_rsp_dw_rem -= rsp_dw;
+        dma_read_cpl_dw_rem -= rsp_dw;
 
         fprintf_tlp_host_to_afu(logfile, cycle, ch, &hdr, tdata, tuser);
     }
@@ -984,12 +1272,24 @@ static bool pcie_tlp_h2a_cpld(
     // Pop request
     if (tdata->eop)
     {
-        dma_rsp->busy = false;
-        dma_read_rsp_head = dma_rsp->next;
-        if (dma_read_rsp_head == NULL)
+        // Last packet for the original request? If so, free the tag. There
+        // may be multiple completion packets associated with a single read request.
+        if (dma_cpl->is_last)
         {
-            dma_read_rsp_tail = NULL;
+            dma_cpl->state->busy = false;
         }
+
+        dma_read_cpl_head = dma_cpl->next;
+        if (dma_read_cpl_head == NULL)
+        {
+            dma_read_cpl_tail = NULL;
+        }
+        else
+        {
+            dma_read_cpl_head->prev = NULL;
+        }
+
+        free(dma_cpl);
     }
 
     return !tdata->valid || tdata->eop;
@@ -1017,26 +1317,34 @@ int pcie_param_init(const t_ase_axis_param_cfg *params)
 {
     memcpy((char *)&param_cfg, (const char *)params, sizeof(param_cfg));
 
-    ase_free_buffer((char *)mmio_read_state);
+    free(mmio_read_state);
     uint64_t mmio_state_size = sizeof(t_mmio_read_state) *
                                param_cfg.max_outstanding_mmio_rd_reqs;
     mmio_read_state = ase_malloc(mmio_state_size);
     memset(mmio_read_state, 0, mmio_state_size);
 
-    ase_free_buffer((char *)dma_read_state);
+    free(dma_read_state);
+    while (dma_read_cpl_head)
+    {
+        t_dma_read_cpl *read_cpl_next = dma_read_cpl_head->next;
+        free(dma_read_cpl_head);
+        dma_read_cpl_head = read_cpl_next;
+    }
+    dma_read_cpl_tail = NULL;
     uint64_t dma_state_size = sizeof(t_dma_read_state) *
                               param_cfg.max_outstanding_dma_rd_reqs;
     dma_read_state = ase_malloc(dma_state_size);
     memset(dma_read_state, 0, dma_state_size);
+    dma_read_cpl_dw_rem = 0;
 
     // Free array of buffers for each read tag
     if (read_rsp_n_entries)
     {
         for (int i = 0; i < read_rsp_n_entries; i += 1)
         {
-            ase_free_buffer((char *)read_rsp_data[i]);
+            free(read_rsp_data[i]);
         }
-        ase_free_buffer((char *)read_rsp_data);
+        free(read_rsp_data);
     }
 
     // Allocate a buffer for each possible read tag
@@ -1047,7 +1355,7 @@ int pcie_param_init(const t_ase_axis_param_cfg *params)
         read_rsp_data[i] = ase_malloc(param_cfg.max_payload_bytes);
     }
 
-    ase_free_buffer((char *)interrupt_state);
+    free(interrupt_state);
     uint64_t interrupt_state_size = sizeof(t_interrupt_state) *
                                     param_cfg.num_afu_interrupts;
     interrupt_state = ase_malloc(interrupt_state_size);
@@ -1105,7 +1413,7 @@ int pcie_tlp_stream_host_to_afu_ch(
             host_to_afu_state = TLP_STATE_MEM;
         }
         else if (! tdata->valid &&
-                 dma_read_rsp_head && ! pcie_tlp_h2a_cpld(cycle, ch, tdata, tuser))
+                 dma_read_cpl_head && ! pcie_tlp_h2a_cpld(cycle, ch, tdata, tuser))
         {
             host_to_afu_state = TLP_STATE_CPL;
         }
