@@ -1222,6 +1222,9 @@ static bool pcie_tlp_h2a_cpld(
         // channel use pattern more complicated.
         if ((pcie_tlp_rand() & 0xff) > 0xd0) return true;
 
+        // Minimum latency
+        if (cycle - dma_cpl->state->start_cycle < 250) return true;
+
         tdata->valid = 1;
         tdata->sop = 1;
 

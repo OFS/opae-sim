@@ -146,7 +146,7 @@ int get_loglevel(void);
 void set_loglevel(int level);
 
 int ase_calc_loglevel(void);
-void ase_print(int loglevel, char *fmt, ...);
+void ase_print(int loglevel, const char *fmt, ...);
 int generate_sockname(char *);
 
 #ifdef SIM_SIDE

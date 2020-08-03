@@ -267,22 +267,32 @@ void memline_addr_error(const char *access_type,
 		"@ERROR: This most often happens when the application munmaps or frees\n" \
 		"        a region before calling fpgaReleaseBuffer().\n"
 
+	#define MEMLINE_ADDR_ILLEGAL_4KB_MSG \
+		"@ERROR: ASE has detected a memory %s to an ILLEGAL 4KB page crossing.\n" \
+		"        Simulation cannot continue, please check the code.\n" \
+		"          Failure @ byte-level phys_addr = 0x%" PRIx64 "\n" \
+		"                    line-level phys_addr = 0x%" PRIx64 "\n" \
+		"        See ERROR log file ase_memory_error.log and timestamped\n" \
+		"        transactions in %s.\n"
+
 	FILE *error_fp = fopen("ase_memory_error.log", "w");
+	const char *msg = NULL;
 
 	if (status == HOST_MEM_STATUS_ILLEGAL) {
-		ASE_ERR("\n" MEMLINE_ADDR_ILLEGAL_MSG, access_type, pa, pa >> 6, event_log_name);
-		if (error_fp != NULL) {
-			fprintf(error_fp, MEMLINE_ADDR_ILLEGAL_MSG, access_type, pa, pa >> 6, event_log_name);
-		}
+		msg = MEMLINE_ADDR_ILLEGAL_MSG;
 	} else if (status == HOST_MEM_STATUS_NOT_PINNED) {
-		ASE_ERR("\n" MEMLINE_ADDR_UNPINNED_MSG, access_type, pa, pa >> 6, event_log_name);
-		if (error_fp != NULL) {
-			fprintf(error_fp, MEMLINE_ADDR_UNPINNED_MSG, access_type, pa, pa >> 6, event_log_name);
-		}
+		msg = MEMLINE_ADDR_UNPINNED_MSG;
 	} else if (status == HOST_MEM_STATUS_NOT_MAPPED) {
-		ASE_ERR("\n" MEMLINE_ADDR_UNMAPPED_MSG, access_type, pa, pa >> 6, va, event_log_name);
+		msg = MEMLINE_ADDR_UNMAPPED_MSG;
+	} else if (status == HOST_MEM_STATUS_ILLEGAL_4KB) {
+		msg = MEMLINE_ADDR_ILLEGAL_4KB_MSG;
+	}
+
+	if (msg != NULL) {
+		ASE_ERR("");
+        ase_print(ASE_LOG_ERROR, msg, access_type, pa, pa >> 6, event_log_name);
 		if (error_fp != NULL) {
-			fprintf(error_fp, MEMLINE_ADDR_UNMAPPED_MSG, access_type, pa, pa >> 6, va, event_log_name);
+			fprintf(error_fp, msg, access_type, pa, pa >> 6, event_log_name);
 		}
 	} else {
 		ASE_ERR("\n @ERROR: Unknown memory reference error.\n");

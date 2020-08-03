@@ -1629,7 +1629,7 @@ STATIC ase_host_memory_status membus_op_status(uint64_t va, uint64_t pa, uint64_
 
 	if (((pa & 4095) + bytes) > 4096) {
 		// Request crosses a 4KB boundary -- illegal on PCIe and impossible on CCI-P
-		st = HOST_MEM_STATUS_ILLEGAL;
+		st = HOST_MEM_STATUS_ILLEGAL_4KB;
 	} else if (va == 0) {
 		st = HOST_MEM_STATUS_NOT_PINNED;
 	} else {

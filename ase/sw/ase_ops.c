@@ -775,7 +775,7 @@ int ase_calc_loglevel(void)
 /*
  * Print level function
  */
-void ase_print(int loglevel, char *fmt, ...)
+void ase_print(int loglevel, const char *fmt, ...)
 {
 	va_list args;
 	va_start(args, fmt);

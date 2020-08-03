@@ -59,6 +59,8 @@ typedef uint64_t ase_host_memory_req;
 // Address is pinned but the page is unmapped. This state most likely
 // happens when the program unmaps a page that is still pinned.
 #define HOST_MEM_STATUS_NOT_MAPPED 3
+// Access crosses 4KB boundary
+#define HOST_MEM_STATUS_ILLEGAL_4KB 4
 typedef uint64_t ase_host_memory_status;
 
 // Maximum size (bytes) of a memory read or write request within
