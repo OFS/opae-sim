@@ -65,10 +65,10 @@ static void fprintf_tlp_dw0(FILE *stream, t_tlp_hdr_dw0_upk dw0)
 static void fprintf_tlp_mem_req(FILE *stream, const t_tlp_hdr_upk *hdr)
 {
     fprintf_tlp_dw0(stream, hdr->dw0);
-    fprintf(stream, " req_id 0x%04x tag 0x%02x lbe 0x%x fbe 0x%x addr %p",
+    fprintf(stream, " req_id 0x%04x tag 0x%02x lbe 0x%x fbe 0x%x addr 0x%016" PRIx64,
             hdr->u.mem.requester_id, hdr->u.mem.tag,
             hdr->u.mem.last_be, hdr->u.mem.first_be,
-            (void*)hdr->u.mem.addr);
+            hdr->u.mem.addr);
 }
 
 static void fprintf_tlp_cpl(FILE *stream, const t_tlp_hdr_upk *hdr)

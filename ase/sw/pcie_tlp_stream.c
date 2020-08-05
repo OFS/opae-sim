@@ -581,6 +581,11 @@ static void pcie_tlp_a2h_mwr(
             ASE_ERR("AFU Tx TLP - DMA write last_be is 0 on a multiple DWORD write:\n");
             pcie_tlp_a2h_error_and_kill(cycle, ch, &hdr, tdata, tuser);
         }
+        if ((hdr.u.mem.addr <= 0xffffffff) && tlp_func_is_addr64(hdr.dw0.fmttype))
+        {
+            ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit writes when address fits in MWr32:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, ch, &hdr, tdata, tuser);
+        }
     }
 
     // How many DWORDs (uint32_t) are still expected?
@@ -689,6 +694,12 @@ static void pcie_tlp_a2h_mrd(
     if ((hdr->dw0.length > 1) && (hdr->u.mem.last_be == 0))
     {
         ASE_ERR("AFU Tx TLP - DMA read last_be is 0 on a multiple DWORD read:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, ch, hdr, tdata, tuser);
+    }
+
+    if ((hdr->u.mem.addr <= 0xffffffff) && tlp_func_is_addr64(hdr->dw0.fmttype))
+    {
+        ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit reads when address fits in MRd32:\n");
         pcie_tlp_a2h_error_and_kill(cycle, ch, hdr, tdata, tuser);
     }
 
@@ -1208,6 +1219,10 @@ static bool pcie_tlp_h2a_cpld(
 
     if (dma_read_cpl_dw_rem)
     {
+        // Refuse to continue randomly in order to make the
+        // channel use pattern more complicated.
+        if ((pcie_tlp_rand() & 0xff) > 0xd0) return false;
+
         // In the middle of a completion
         tdata->valid = 1;
 
