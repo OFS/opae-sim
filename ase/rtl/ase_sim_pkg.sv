@@ -109,9 +109,9 @@ package ase_sim_pkg;
         wait (system_is_idle);
         @(posedge clk);
         ase_reset = 1; 
-        advance_clock(20);
+        advance_clock(100);
         ase_reset = 0;
-        advance_clock(20);
+        advance_clock(100);
         reset_lockdown = 0;
     endtask
 

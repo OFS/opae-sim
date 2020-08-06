@@ -199,7 +199,12 @@ function automatic Response memory_response (Command cmd);
 	rsp.burstcount = (cmd.trans == READ) ? cmd.burstcount : 1;
 	for(int idx = 0; idx < cmd.burstcount; idx++) begin
 		if(cmd.trans == READ) begin
-			rsp.data[idx] = memory[cmd.addr+idx] & get_mask(cmd.byteenable[0]);
+			if (memory.exists(cmd.addr+idx)) begin
+				rsp.data[idx] = memory[cmd.addr+idx] & get_mask(cmd.byteenable[0]);
+			end
+			else begin
+				rsp.data[idx] = {(DDR_DATA_WIDTH/32){32'hdeadbeef}};
+			end
 			rsp.latency[idx] = $urandom_range(0,MAX_LATENCY); // set a random memory response latency
 		end
 	end
