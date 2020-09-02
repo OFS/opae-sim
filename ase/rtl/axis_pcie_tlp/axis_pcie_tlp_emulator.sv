@@ -474,7 +474,7 @@ module axis_pcie_tlp_emulator
             get_rx_irq_responses();
 
             // Send TLP messages to host
-            if (pcie_tlp_if.afu_tx_st.tready)
+            if (pcie_tlp_if.afu_tx_st.tvalid && pcie_tlp_if.afu_tx_st.tready)
             begin
                 send_tx_tlp_messages();
             end
