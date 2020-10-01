@@ -195,6 +195,7 @@ CC_OPT+= -g $(CC_INT_SIZE) -fPIC -D SIM_SIDE=1 -I $(ASE_SRCDIR)/sw/
 CC_OPT+= -D SIMULATOR=$(SIMULATOR) -D $(ASE_PLATFORM)
 CC_OPT+= -Wall -Wformat -Wformat-security
 CC_OPT+= -O2 -D_FORTIFY_SOURCE=2
+CC_OPT+= -std=c99
 ifeq ($(GCC_VERSION_GT_49),1)
   CC_OPT+= -fstack-protector-strong
   CC_OPT+= -z noexecstack -z relro -z now
