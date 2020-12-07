@@ -197,12 +197,22 @@ static void tlp_hdr_unpack(
 // ========================================================================
 
 static unsigned long next_rand = 1;
+static bool did_rand_init = false;
+static bool unlimited_bw_mode = false;
 
 // Local repeatable random number generator
-static int pcie_tlp_rand(void)
+static int32_t pcie_tlp_rand(void)
 {
+    if (!did_rand_init)
+    {
+        did_rand_init = true;
+        unlimited_bw_mode = (getenv("ASE_UNLIMITED_BW") != NULL);
+    }
+
+    if (unlimited_bw_mode) return 0;
+
     next_rand = next_rand * 1103515245 + 12345;
-    return ((unsigned)(next_rand/65536) % 32768);
+    return ((uint32_t)(next_rand/65536) % 32768);
 }
 
 // Offset to add to lower_addr due to masked bytes at the start of a read
@@ -787,13 +797,23 @@ static inline uint32_t random_cpl_length(uint32_t length_rem)
 
     if (length_rem > (param_cfg.request_completion_boundary / 4))
     {
+        uint32_t max_chunks;
+        uint32_t rand_num;
+        uint32_t rand_chunks;
+        uint32_t rand_length;
+
         // Pick a random length, between the RCB and the total
         // payload size.
-        uint32_t max_chunks = param_cfg.max_payload_bytes /
-                              param_cfg.request_completion_boundary;
-        uint32_t rand_chunks = 1 + (pcie_tlp_rand() % max_chunks);
+        max_chunks = param_cfg.max_payload_bytes /
+                     param_cfg.request_completion_boundary;
+
+        // rand_num == 0 is handled as a special case, used when forcing max.
+        // bandwidth.
+        rand_num = pcie_tlp_rand();
+        rand_chunks = (rand_num == 0) ? max_chunks : 1 + (rand_num % max_chunks);
+
         // Random length (in DWORDs, like length_rem)
-        uint32_t rand_length = rand_chunks * param_cfg.request_completion_boundary / 4;
+        rand_length = rand_chunks * param_cfg.request_completion_boundary / 4;
 
         // Limit length to the random number of chunks
         length = (length_rem <= rand_length) ? length_rem : rand_length;
@@ -817,9 +837,10 @@ static void push_new_read_cpl(t_dma_read_cpl *read_cpl)
     // responses those responses must be ordered relative to each other.
 
     // Pick a random number of current responses to put after this new one
-    int r = pcie_tlp_rand() & 0xff;
+    uint32_t r = pcie_tlp_rand() & 0xff;
     int n_later_rsp;
-    if (r >= 0x80)
+    // r == 0 is a special case, used when rate limiting is off
+    if ((r >= 0x80) || (r == 0))
         n_later_rsp = 0;
     else if (r >= 0x20)
         n_later_rsp = 5;
@@ -1238,7 +1259,10 @@ static bool pcie_tlp_h2a_cpld(
         if ((pcie_tlp_rand() & 0xff) > 0xd0) return true;
 
         // Minimum latency
-        if (cycle - dma_cpl->state->start_cycle < 250) return true;
+        if ((cycle - dma_cpl->state->start_cycle < 250) && !unlimited_bw_mode)
+        {
+            return true;
+        }
 
         tdata->valid = 1;
         tdata->sop = 1;
@@ -1571,7 +1595,7 @@ int pcie_tlp_stream_afu_to_host_tready(
     cur_cycle = cycle;
 
     // Random back-pressure
-    return ((pcie_tlp_rand() & 0xff) > 0x10);
+    return ((pcie_tlp_rand() & 0xff) < 0xf0);
 }
 
 

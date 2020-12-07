@@ -32,8 +32,6 @@ import avalon_mm_pkg::*;
 //---------------------------------------------------
 // Constants
 //---------------------------------------------------
-localparam BURST_W                  = 7;
-localparam MAX_BURST                = 64;
 localparam MAX_LATENCY              = 2;
 
 localparam MAX_COMMAND_IDLE         = 5;
@@ -43,13 +41,14 @@ localparam MAX_DATA_IDLE            = 3;
 module emif_ddr4 #(
 	parameter DDR_ADDR_WIDTH = 26,
 	parameter DDR_DATA_WIDTH = 512,
+	parameter BURST_WIDTH = 7,
 	parameter SYMBOL_WIDTH = 8,
 	parameter NUM_SYMBOLS = (DDR_DATA_WIDTH + SYMBOL_WIDTH - 1) / SYMBOL_WIDTH
 ) (
 	output wire         ddr_avmm_waitrequest,
 	output wire [DDR_DATA_WIDTH-1:0] ddr_avmm_readdata,
 	output wire         ddr_avmm_readdatavalid,
-	input  wire [BURST_W-1:0]   ddr_avmm_burstcount,
+	input  wire [BURST_WIDTH-1:0]   ddr_avmm_burstcount,
 	input  wire [DDR_DATA_WIDTH-1:0] ddr_avmm_writedata,
 	input  wire [DDR_ADDR_WIDTH-1:0]  ddr_avmm_address,
 	input  wire         ddr_avmm_write,
@@ -64,7 +63,8 @@ module emif_ddr4 #(
 //---------------------------------------------------
 // Data structures
 //---------------------------------------------------
-typedef logic [BURST_W-1:0]      Burstcount;
+localparam MAX_BURST = 1 << (BURST_WIDTH - 1);
+typedef logic [BURST_WIDTH-1:0]      Burstcount;
 
 typedef enum bit
 {
@@ -107,7 +107,7 @@ assign ddr_avmm_clk_clk = ddr_pll_ref_clk_clock_sink_clk;
 altera_avalon_mm_slave_bfm #(
 	.AV_ADDRESS_W               (DDR_ADDR_WIDTH),
 	.AV_NUMSYMBOLS              (NUM_SYMBOLS),
-	.AV_BURSTCOUNT_W            (BURST_W),
+	.AV_BURSTCOUNT_W            (BURST_WIDTH),
 	.AV_READRESPONSE_W          (1),
 	.AV_WRITERESPONSE_W         (1),
 	.USE_BEGIN_TRANSFER         (0),
