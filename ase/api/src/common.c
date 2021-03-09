@@ -216,7 +216,7 @@ void fpga_print(int loglevel, char *fmt, ...)
 	}
 
 	if (g_loglevel < 0) /* loglevel still not set? */
-		g_loglevel = FPGA_DEFAULT_LOGLEVEL;
+		g_loglevel = OPAE_DEFAULT_LOGLEVEL;
 
 	if (loglevel > g_loglevel)
 		return;
