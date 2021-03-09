@@ -165,11 +165,6 @@ int __FPGA_API__ opae_plugin_configure(opae_api_adapter_table *adapter,
 	adapter->finalize =
 		dlsym(adapter->plugin.dl_handle, "ase_plugin_finalize");
 
-	adapter->supports_device = dlsym(adapter->plugin.dl_handle,
-					 "ase_plugin_supports_device");
-	adapter->supports_host =
-		dlsym(adapter->plugin.dl_handle, "ase_plugin_supports_host");
-
 	adapter->fpgaGetNumMetrics =
 		dlsym(adapter->plugin.dl_handle, "ase_fpgaGetNumMetrics");
 
