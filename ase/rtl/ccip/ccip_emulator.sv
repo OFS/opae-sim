@@ -44,6 +44,9 @@
  */
 
 `include "platform.vh"
+`include "platform_if.vh"
+
+`ifndef OFS_PLAT_PARAM_HOST_CHAN_IS_NATIVE_AXIS_PCIE_TLP
 
 // CCI to Memory translator module
 module ccip_emulator
@@ -2453,3 +2456,5 @@ module ccip_emulator
     end
 
 endmodule // cci_emulator
+
+`endif //  `ifndef OFS_PLAT_PARAM_HOST_CHAN_IS_NATIVE_AXIS_PCIE_TLP
