@@ -31,50 +31,20 @@
 `include "platform.vh"
 
 //
-// Data types for AXI-S PCIe TLP emulation
+// Data types for AXI-S PCIe SS emulation
 
-package axis_pcie_tlp_pkg;
+package ase_pcie_ss_pkg;
 
     typedef struct {
-        int num_tlp_channels;
+        int tdata_width_bits;
+        int tuser_width_bits;
         int max_outstanding_dma_rd_reqs;    // DMA tags must be less than this value
         int max_outstanding_mmio_rd_reqs;   // MMIO tags must be less than this value
         int num_afu_interrupts;
+        int num_of_sop;                     // Maximum number of SOPs in one tdata
+        int num_of_seg;                     // Maximum number of segments in one tdata
         int max_payload_bytes;              // Maximum size of a payload
         int request_completion_boundary;    // Minimum size of a read completion
-        int channel_payload_bytes;
-    } t_ase_axis_param_cfg;
+    } t_ase_pcie_ss_param_cfg;
 
-    //
-    // Single-bit fields are encoded as "byte" for easier handling in C.
-    // Only the low bit will be used.
-    //
-
-    // Generic single-channel format, either AFU->host or host->AFU.
-    typedef struct {
-        bit [255:0] payload;
-        bit [127:0] hdr;
-        byte irq_id;    // Used only by AFU->host when afu_irq is set in tuser
-        byte eop;
-        byte sop;
-        byte valid;
-    } t_ase_axis_pcie_tdata;
-
-    // Only the fields ASE simulates are defined. Any others default to 0.
-    typedef struct {
-        byte mmio_req;
-    } t_ase_axis_pcie_rx_tuser;
-
-    // Only the fields ASE simulates are defined. Any others default to 0.
-    typedef struct {
-        byte afu_irq;
-    } t_ase_axis_pcie_tx_tuser;
-
-    // Interrupt response
-    typedef struct {
-        shortint rid;
-        byte irq_id;
-        byte tvalid;
-    } t_ase_axis_pcie_irq_rsp;
-
-endpackage // axis_pcie_tlp_pkg
+endpackage // ase_pcie_ss_pkg

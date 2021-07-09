@@ -32,6 +32,7 @@
  */
 #include "ase_common.h"
 #include "ase_host_memory.h"
+#include "pcie_ss_tlp_stream.h"
 #include "pcie_tlp_stream.h"
 
 //const int NUM_DS = 10;
@@ -806,7 +807,8 @@ err:
  * When a deallocate message is received, the buffer is invalidated.
  *
  * When mode is 0, MMIO is handled by the DPI-C method mmio_dispatch.
- * When mode is 1, MMIO is handled by ase_pcie_tlp_mmio_req.
+ * When mode is 1, MMIO is handled by the EA TLP emulator.
+ * When mode is 2, MMIO is handled by the OFS PCIe subsystem emulator.
  *
  * *******************************************************************/
 int ase_listener(int mode)
@@ -833,7 +835,7 @@ int ase_listener(int mode)
 
 	//   FUNC_CALL_ENTRY;
 
-    if (mode == 1)
+    if (mode > 0)
     {
         // PCIe TLP mode
         event_log_name = "log_ase_events.tsv";
@@ -1130,8 +1132,13 @@ int ase_listener(int mode)
 			if (mode == 0) {
 				mmio_dispatch(0, incoming_mmio_pkt);
 			}
-			else {
+			else if (mode == 1) {
+				// OFS early access TLP encoding
 				pcie_mmio_new_req(incoming_mmio_pkt);
+			}
+			else {
+				// OFS PCIe subsystem TLP encoding
+				pcie_ss_mmio_new_req(incoming_mmio_pkt);
 			}
 		}
 		// ------------------------------------------------------------------------------- //

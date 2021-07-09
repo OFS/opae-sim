@@ -13,6 +13,10 @@
 @ASE_SHARE_DIR@/rtl/ccip/ccip_logger.sv
 @ASE_SHARE_DIR@/rtl/ccip/ccip_checker.sv
 
+@ASE_SHARE_DIR@/pcie_ss_tlp/ase_pcie_ss_pkg.sv
+@ASE_SHARE_DIR@/pcie_ss_tlp/ase_pcie_ss_emulator.sv
+@ASE_SHARE_DIR@/pcie_ss_tlp/ase_pcie_ss_logger.sv
+
 @ASE_SHARE_DIR@/rtl/axis_pcie_tlp/axis_pcie_tlp_pkg.sv
 @ASE_SHARE_DIR@/rtl/axis_pcie_tlp/axis_pcie_tlp_emulator.sv
 @ASE_SHARE_DIR@/rtl/axis_pcie_tlp/axis_pcie_tlp_logger.sv

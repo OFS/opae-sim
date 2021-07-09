@@ -138,13 +138,16 @@ ASESW_FILE_LIST = \
 	$(ASE_SRCDIR)/sw/ipc_mgmt_ops.c \
 	$(ASE_SRCDIR)/sw/ase_shbuf.c \
 	$(ASE_SRCDIR)/sw/protocol_backend.c \
-	$(ASE_SRCDIR)/sw/pcie_tlp_debug.c \
-	$(ASE_SRCDIR)/sw/pcie_tlp_stream.c \
 	$(ASE_SRCDIR)/sw/tstamp_ops.c \
 	$(ASE_SRCDIR)/sw/mqueue_ops.c \
 	$(ASE_SRCDIR)/sw/error_report.c \
 	$(ASE_SRCDIR)/sw/linked_list_ops.c \
 	$(ASE_SRCDIR)/sw/randomness_control.c \
+	$(ASE_SRCDIR)/sw/axis_pcie_tlp/pcie_tlp_debug.c \
+	$(ASE_SRCDIR)/sw/axis_pcie_tlp/pcie_tlp_stream.c \
+	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_debug.c \
+	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_hdr.c \
+	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_stream.c \
 
 ## ASE top level module
 ASE_TOP = ase_top
@@ -191,7 +194,7 @@ endif
 
 ## C Compiler options
 CC_OPT?=
-CC_OPT+= -g $(CC_INT_SIZE) -fPIC -D SIM_SIDE=1 -I $(ASE_SRCDIR)/sw/
+CC_OPT+= -g $(CC_INT_SIZE) -fPIC -D SIM_SIDE=1 -I $(ASE_SRCDIR)/sw -I $(ASE_SRCDIR)/sw/pcie_ss_tlp -I $(ASE_SRCDIR)/sw/axis_pcie_tlp
 CC_OPT+= -D SIMULATOR=$(SIMULATOR) -D $(ASE_PLATFORM)
 CC_OPT+= -Wall -Wformat -Wformat-security
 CC_OPT+= -O2 -D_FORTIFY_SOURCE=2

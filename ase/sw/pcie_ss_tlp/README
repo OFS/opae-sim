@@ -1,0 +1,2 @@
+Emulate the PCIe subsystem that ships with all versions of OFS except the early
+access (EA) release.

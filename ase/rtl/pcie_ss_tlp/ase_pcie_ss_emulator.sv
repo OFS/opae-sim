@@ -32,27 +32,19 @@
 `include "platform_if.vh"
 
 //
-// Only import this module when PCIe TLP EA (early access) emulation is
+// Only import this module when PCIe subsystem (SS) TLP emulation is
 // required since the data structures may not be defined unless the
 // platform supports it.
 //
-// Later versions of OFS use the PCIe SS TLP encoding -- a different
-// ASE variant found in axis_pcie_ss.
+// PCIe SS is the standard OFS TLP encoding for all releases except
+// the initial early access version.
 //
 `ifdef OFS_PLAT_PARAM_HOST_CHAN_IS_NATIVE_AXIS_PCIE_TLP
-`ifdef OFS_PLAT_PARAM_HOST_CHAN_GASKET_EA_OFS_FIM
+`ifdef OFS_PLAT_PARAM_HOST_CHAN_GASKET_PCIE_SS
 
-module axis_pcie_tlp_emulator
+module ase_pcie_ss_emulator
   #(
-    parameter NUM_TLP_CHANNELS = 1,
-    // DMA tags must be less than this value
-    parameter MAX_OUTSTANDING_DMA_RD_REQS = 256,
-    // MMIO tags must be less than this value
-    parameter MAX_OUTSTANDING_MMIO_RD_REQS = 64,
-    parameter NUM_AFU_INTERRUPTS = 4,
-    // Maximum length of a full payload (over multiple cycles)
-    parameter MAX_PAYLOAD_BYTES = 256,
-    // Minimum size and alignment of a read completion (RCB)
+    // Minimum size and alignment of a read completion (RCB) in bytes
     parameter REQUEST_COMPLETION_BOUNDARY = 64,
     parameter CHANNEL_PAYLOAD_BYTES = 32
     )
@@ -64,13 +56,33 @@ module axis_pcie_tlp_emulator
     output logic [1:0] pck_cp2af_pwrState,
     output logic       pck_cp2af_error,
    
-    // Interface structures
-    ofs_plat_host_chan_axis_pcie_tlp_if pcie_tlp_if
+    // PCIe interface
+    pcie_ss_axis_if.source pcie_rx_if,
+    pcie_ss_axis_if.sink pcie_tx_if
     );
 
     import ase_pkg::*;
     import ase_sim_pkg::*;
-    import axis_pcie_tlp_pkg::*;
+    import ase_pcie_ss_pkg::*;
+
+    localparam TDATA_WIDTH = ofs_pcie_ss_cfg_pkg::TDATA_WIDTH;
+    typedef bit [TDATA_WIDTH-1:0] t_tdata;
+
+    localparam TUSER_WIDTH = ofs_pcie_ss_cfg_pkg::TUSER_VENDOR_WIDTH;
+    typedef bit [TUSER_WIDTH-1:0] t_tuser;
+
+    localparam TKEEP_WIDTH = ofs_pcie_ss_cfg_pkg::TDATA_WIDTH / 8;
+    typedef bit [TKEEP_WIDTH-1:0] t_tkeep;
+
+    localparam NUM_OF_SOP = ofs_pcie_ss_cfg_pkg::NUM_OF_SOP;
+    localparam NUM_OF_SEG = ofs_pcie_ss_cfg_pkg::NUM_OF_SEG;
+
+    // Maximum number of FPGA->host tags. (Tag values must be less than this.)
+    localparam MAX_OUTSTANDING_DMA_RD_REQS = ofs_pcie_ss_cfg_pkg::PCIE_EP_MAX_TAGS;
+    // Maximum number of host->FPGA tags. (Tag values will be less than this.)
+    localparam MAX_OUTSTANDING_MMIO_RD_REQS = ofs_pcie_ss_cfg_pkg::PCIE_RP_MAX_TAGS;
+
+    localparam NUM_AFU_INTERRUPTS = 4;
 
     // Power and error state
     assign pck_cp2af_pwrState = 2'b0;
@@ -116,43 +128,44 @@ module axis_pcie_tlp_emulator
     // in order to define the symbol.)
     export "DPI-C" task mmio_dispatch;
 
-    import "DPI-C" context function void pcie_param_init(input t_ase_axis_param_cfg params);
+    import "DPI-C" context function void pcie_ss_param_init(input t_ase_pcie_ss_param_cfg params);
 
-    import "DPI-C" context function void pcie_tlp_reset();
+    import "DPI-C" context function void pcie_ss_reset();
 
-    import "DPI-C" context function void pcie_tlp_stream_host_to_afu_ch(
+    import "DPI-C" context function void pcie_ss_stream_host_to_afu(
                                             input  longint cycle,
-                                            input  int ch,
                                             input  int tready,
-                                            output t_ase_axis_pcie_tdata tdata,
-                                            output t_ase_axis_pcie_rx_tuser tuser);
+                                            output int tvalid,
+                                            output int tlast,
+                                            output t_tdata tdata,
+                                            output t_tuser tuser,
+                                            output t_tkeep tkeep);
 
-    import "DPI-C" context function void pcie_tlp_stream_afu_to_host_ch(
+    import "DPI-C" context function void pcie_ss_stream_afu_to_host(
                                             input  longint cycle,
-                                            input  int ch,
-                                            input  t_ase_axis_pcie_tdata tdata,
-                                            input  t_ase_axis_pcie_tx_tuser tuser);
+                                            input  int tvalid,
+                                            input  int tlast,
+                                            input  t_tdata tdata,
+                                            input  t_tuser tuser,
+                                            input  t_tkeep tkeep);
 
-    import "DPI-C" context function int pcie_tlp_stream_afu_to_host_tready(
+    import "DPI-C" context function int pcie_ss_stream_afu_to_host_tready(
                                             input  longint cycle);
-
-    import "DPI-C" context function void pcie_host_to_afu_irq_rsp(
-                                            input  longint cycle,
-                                            input  int tready,
-                                            output t_ase_axis_pcie_irq_rsp irq_rsp);
 
     // Scope generator
     initial scope_function();
 
-    t_ase_axis_param_cfg param_cfg;
-    assign param_cfg.num_tlp_channels = NUM_TLP_CHANNELS;
+    t_ase_pcie_ss_param_cfg param_cfg;
+    assign param_cfg.tdata_width_bits = TDATA_WIDTH;
+    assign param_cfg.tuser_width_bits = TUSER_WIDTH;
     assign param_cfg.max_outstanding_dma_rd_reqs = MAX_OUTSTANDING_DMA_RD_REQS;
     assign param_cfg.max_outstanding_mmio_rd_reqs = MAX_OUTSTANDING_MMIO_RD_REQS;
     assign param_cfg.num_afu_interrupts = NUM_AFU_INTERRUPTS;
-    assign param_cfg.max_payload_bytes = MAX_PAYLOAD_BYTES;
+    assign param_cfg.num_of_sop = NUM_OF_SOP;
+    assign param_cfg.num_of_seg = NUM_OF_SEG;
+    assign param_cfg.max_payload_bytes = 256;
     assign param_cfg.request_completion_boundary = REQUEST_COMPLETION_BOUNDARY;
-    assign param_cfg.channel_payload_bytes = CHANNEL_PAYLOAD_BYTES;
-    initial pcie_param_init(param_cfg);
+    initial pcie_ss_param_init(param_cfg);
 
     // Finish logger command
     logic finish_trigger = 0;
@@ -226,7 +239,8 @@ module axis_pcie_tlp_emulator
      *
      * *******************************************************************/
     always @(posedge clk) begin : daemon_proc
-        ase_listener(1);
+        // Mode 2 indicates the OFS PCIe SS emulator is active
+        ase_listener(2);
     end
 
 
@@ -283,17 +297,17 @@ module axis_pcie_tlp_emulator
 
 
     /*
-     * CCI Logger module
+     * Logger module
      */
 `ifndef ASE_DISABLE_LOGGER
     assign ase_logger_disable = 0;
 
     // ccip_logger instance
-    axis_pcie_tlp_logger
+    ase_pcie_ss_logger
       #(
         .LOGNAME("log_ase_events.tsv")
         )
-      axis_pcie_tlp_logger
+      ase_pcie_ss_logger
        (
         // Logger control
         .finish_logger(finish_trigger),
@@ -302,7 +316,7 @@ module axis_pcie_tlp_emulator
         .log_string_en(buffer_msg_en),
         .log_timestamp_en(buffer_msg_tstamp_en),
         .log_string(buffer_msg),
-        // CCIP ports
+
         .clk(clk),
         .SoftReset(SoftReset)
         );
@@ -340,11 +354,15 @@ module axis_pcie_tlp_emulator
     endtask // mmio_dispatch
 
     longint cycle_counter;
-    int ch;
-    t_ase_axis_pcie_tdata rx_tdata[NUM_TLP_CHANNELS];
-    t_ase_axis_pcie_rx_tuser rx_tuser[NUM_TLP_CHANNELS];
-    t_ase_axis_pcie_tdata tx_tdata[NUM_TLP_CHANNELS];
-    t_ase_axis_pcie_tx_tuser tx_tuser[NUM_TLP_CHANNELS];
+    int rx_tvalid;
+    int rx_tlast;
+    t_tdata rx_tdata;
+    t_tkeep rx_tkeep;
+    t_tuser rx_tuser;
+
+    t_tdata tx_tdata;
+    t_tkeep tx_tkeep;
+    t_tuser tx_tuser;
 
     always_ff @(posedge clk)
     begin
@@ -358,104 +376,41 @@ module axis_pcie_tlp_emulator
         end
     end
 
+
     // Honor flow control on PCIe RX (host->AFU) stream
     logic rx_tready;
-    assign rx_tready = !pcie_tlp_if.afu_rx_st.tvalid ||
-                       pcie_tlp_if.afu_rx_st.tready;
-
-    // Map TLP channel message received via DPI-C to the SystemVerilog type
-    task map_rx_tlp_ch(int ch);
-        pcie_tlp_if.afu_rx_st.t.data[ch].valid <= rx_tdata[ch].valid[0];
-        if (rx_tdata[ch].valid[0])
-        begin
-            pcie_tlp_if.afu_rx_st.t.data[ch].sop <= rx_tdata[ch].sop[0];
-            pcie_tlp_if.afu_rx_st.t.data[ch].eop <= rx_tdata[ch].eop[0];
-            pcie_tlp_if.afu_rx_st.t.data[ch].payload <= rx_tdata[ch].payload;
-            pcie_tlp_if.afu_rx_st.t.data[ch].hdr <= rx_tdata[ch].hdr;
-            pcie_tlp_if.afu_rx_st.t.user[ch] <= '0;
-            pcie_tlp_if.afu_rx_st.t.user[ch].mmio_req <= rx_tuser[ch].mmio_req[0];
-        end
-    endtask // map_rx_tlp_ch
+    assign rx_tready = !pcie_rx_if.tvalid || pcie_rx_if.tready;
 
     // Receive one cycle's worth of TLP data via DPI-C
     task get_rx_tlp_messages();
-        logic new_tlps_valid;
-        new_tlps_valid = 0;
-        for (ch = 0; ch < NUM_TLP_CHANNELS; ch = ch + 1)
-        begin
-            // Call the software even if flow control prevents a new message
-            pcie_tlp_stream_host_to_afu_ch(cycle_counter, ch,
-                                           (rx_tready ? 1 : 0),
-                                           rx_tdata[ch], rx_tuser[ch]);
-            new_tlps_valid = new_tlps_valid || rx_tdata[ch].valid[0];
-
-            if (rx_tready)
-            begin
-                map_rx_tlp_ch(ch);
-            end
-        end
-
+        // Call the software even if flow control prevents a new message
+        pcie_ss_stream_host_to_afu(cycle_counter,
+                                   (rx_tready ? 1 : 0),
+                                   rx_tvalid, rx_tlast, rx_tdata, rx_tuser, rx_tkeep);
         if (rx_tready)
         begin
-            pcie_tlp_if.afu_rx_st.tvalid <= new_tlps_valid;
+            pcie_rx_if.tvalid <= rx_tvalid[0];
+            if (rx_tvalid[0])
+            begin
+                pcie_rx_if.tlast <= rx_tlast[0];
+                pcie_rx_if.tdata <= rx_tdata;
+                pcie_rx_if.tkeep <= rx_tkeep;
+                pcie_rx_if.tuser_vendor <= rx_tuser;
+            end
         end
     endtask // get_rx_tlp_messages
 
 
-    t_ase_axis_pcie_irq_rsp rx_irq_rsp;
-    logic rx_irq_tready;
-    assign rx_irq_tready = !pcie_tlp_if.afu_irq_rx_st.tvalid ||
-                           pcie_tlp_if.afu_irq_rx_st.tready;
-
-    // Map interrupt responses received via DPI-C to the SystemVerilog type
-    task map_rx_irq_rsp();
-        pcie_tlp_if.afu_irq_rx_st.tvalid <= rx_irq_rsp.tvalid[0];
-        pcie_tlp_if.afu_irq_rx_st.t.data.rid <= rx_irq_rsp.rid;
-        pcie_tlp_if.afu_irq_rx_st.t.data.irq_id <= rx_irq_rsp.irq_id;
-    endtask // map_rx_irq_rsp
-
-    // Receive one cycle's interrupt responses
-    task get_rx_irq_responses();
-        // Call the software even if flow control prevents a new message
-        pcie_host_to_afu_irq_rsp(cycle_counter,
-                                 (rx_irq_tready ? 1 : 0),
-                                 rx_irq_rsp);
-
-        if (rx_irq_tready)
-        begin
-            map_rx_irq_rsp();
-        end
-    endtask // get_rx_irq_responses
-
-
-    // Map TLP channel message for sending via DPI-C to the SystemVerilog type
-    ofs_fim_if_pkg::t_axis_irq_tdata tx_irq_data[NUM_TLP_CHANNELS];
-
-    task map_tx_tlp_ch(int ch);
-        tx_tdata[ch].valid = { '0, pcie_tlp_if.afu_tx_st.t.data[ch].valid };
-        tx_tdata[ch].sop = { '0, pcie_tlp_if.afu_tx_st.t.data[ch].sop };
-        tx_tdata[ch].eop = { '0, pcie_tlp_if.afu_tx_st.t.data[ch].eop };
-        tx_tdata[ch].payload = pcie_tlp_if.afu_tx_st.t.data[ch].payload;
-        tx_tdata[ch].hdr = pcie_tlp_if.afu_tx_st.t.data[ch].hdr;
-
-        // Only for interrupts
-        tx_tuser[ch].afu_irq = { '0, pcie_tlp_if.afu_tx_st.t.user[ch].afu_irq };
-        tx_irq_data[ch] = ofs_fim_if_pkg::t_axis_irq_tdata'(pcie_tlp_if.afu_tx_st.t.data[ch].hdr);
-        tx_tdata[ch].irq_id = tx_irq_data[ch].irq_id;
-    endtask // map_tx_tlp_ch
-
-    // Send one cycle's worth of TLP data via DPI-C. tvalid is already known true.
+    // Send one cycle's worth of TLP data via DPI-C. tvalid and tready
+    // are already known true.
     task send_tx_tlp_messages();
-        for (ch = 0; ch < NUM_TLP_CHANNELS; ch = ch + 1)
-        begin
-            if (pcie_tlp_if.afu_tx_st.t.data[ch].valid)
-            begin
-                map_tx_tlp_ch(ch);
+        tx_tdata = pcie_tx_if.tdata;
+        tx_tkeep = pcie_tx_if.tkeep;
+        tx_tuser = pcie_tx_if.tuser_vendor;
 
-                pcie_tlp_stream_afu_to_host_ch(cycle_counter, ch,
-                                               tx_tdata[ch], tx_tuser[ch]);
-            end
-        end
+        pcie_ss_stream_afu_to_host(cycle_counter, 1,
+                                   (pcie_tx_if.tlast ? 1 : 0),
+                                   tx_tdata, tx_tuser, tx_tkeep);
     endtask // send_tx_tlp_messages
 
 
@@ -466,32 +421,33 @@ module axis_pcie_tlp_emulator
     begin
         if (SoftReset)
         begin
-            pcie_tlp_if.afu_rx_st.tvalid <= 1'b0;
-            pcie_tlp_if.afu_rx_st.t <= '0;
-            pcie_tlp_if.afu_irq_rx_st.tvalid <= 1'b0;
-            pcie_tlp_if.afu_irq_rx_st.t <= '0;
-            pcie_tlp_if.afu_tx_st.tready <= 1'b0;
-            pcie_tlp_reset();
+            pcie_rx_if.tvalid <= 1'b0;
+            pcie_rx_if.tlast <= 1'b0;
+            pcie_rx_if.tdata <= '0;
+            pcie_rx_if.tkeep <= '0;
+            pcie_rx_if.tuser_vendor <= '0;
+
+            pcie_tx_if.tready <= 1'b0;
+            pcie_ss_reset();
         end
         else
         begin
             // Receive new TLP messages from host
             get_rx_tlp_messages();
-            get_rx_irq_responses();
 
             // Send TLP messages to host
-            if (pcie_tlp_if.afu_tx_st.tvalid && pcie_tlp_if.afu_tx_st.tready)
+            if (pcie_tx_if.tvalid && pcie_tx_if.tready)
             begin
                 send_tx_tlp_messages();
             end
 
             // Can the host receive a message next cycle?
-            pcie_tlp_if.afu_tx_st.tready <= pcie_tlp_stream_afu_to_host_tready(cycle_counter) &&
-                                            ! reset_lockdown;
+            pcie_tx_if.tready <= pcie_ss_stream_afu_to_host_tready(cycle_counter) &&
+                                 ! reset_lockdown;
         end
     end
 
-endmodule // axis_pcie_tlp_emulator
+endmodule // ase_pcie_ss_emulator
 
-`endif //  `ifdef OFS_PLAT_PARAM_HOST_CHAN_GASKET_EA_OFS_FIM
+`endif //  `ifdef OFS_PLAT_PARAM_HOST_CHAN_GASKET_PCIE_SS
 `endif //  `ifndef OFS_PLAT_PARAM_HOST_CHAN_IS_NATIVE_AXIS_PCIE_TLP

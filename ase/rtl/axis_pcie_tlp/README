@@ -1,0 +1,4 @@
+Emulate the OFS early access AXI-S PCIe TLP interface. This interface was used
+in only a single release and will not be used on future OFS systems.
+
+This directory should be removed once there are no more users of the OFS EA code.
