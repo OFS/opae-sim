@@ -82,7 +82,7 @@ module ase_pcie_ss_emulator
     // Maximum number of host->FPGA tags. (Tag values will be less than this.)
     localparam MAX_OUTSTANDING_MMIO_RD_REQS = ofs_pcie_ss_cfg_pkg::PCIE_RP_MAX_TAGS;
 
-    localparam NUM_AFU_INTERRUPTS = 4;
+    localparam NUM_AFU_INTERRUPTS = ofs_fim_cfg_pkg::NUM_AFU_INTERRUPTS;
 
     // Power and error state
     assign pck_cp2af_pwrState = 2'b0;

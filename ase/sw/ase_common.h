@@ -124,7 +124,7 @@
 #define DEFAULT_USR_CLK_TPS        (int)(1E+12/(DEFAULT_USR_CLK_MHZ*pow(1000, 2)));
 
 // Max number of user interrupts
-#define MAX_USR_INTRS              4
+#define MAX_USR_INTRS              64
 
 /*
  * ASE Debug log-level

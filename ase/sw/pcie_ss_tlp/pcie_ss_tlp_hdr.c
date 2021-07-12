@@ -28,6 +28,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include "ase_common.h"
 #include "pcie_ss_tlp_stream.h"
 
 
@@ -63,6 +64,9 @@ void pcie_ss_tlp_hdr_pack(
 )
 {
     pcie_ss_tlp_payload_reset(tdata, tuser, tkeep);
+
+    // Bit 0 of tuser indicates data mover mode
+    svPutPartselBit(tuser, hdr->dm_mode, 0, 1);
 
     // Set keep mask for header
     svPutPartselBit(tkeep, ~0, 0, pcie_ss_cfg.tlp_hdr_dwords * 4);
@@ -135,6 +139,9 @@ void pcie_ss_tlp_hdr_unpack(
 {
     pcie_ss_tlp_hdr_reset(hdr);
 
+    // Bit 0 of tuser indicates data mover mode
+    hdr->dm_mode = svGetBitselBit(tuser, 0);
+
     // Common header components
 
     uint32_t dw0;
@@ -157,6 +164,12 @@ void pcie_ss_tlp_hdr_unpack(
 
     if (tlp_func_is_mem_req(hdr->fmt_type))
     {
+        if (hdr->dm_mode)
+        {
+            ASE_ERR("DM (data mover) mode memory requests not yet supported\n");
+            start_simkill_countdown();
+        }
+
         svGetPartselBit(&v, tdata, 32*1, 32);
         hdr->req_id = (v >> 16) & 0xffff;
         hdr->tag = (((dw0 >> 23) & 1) << 9) |    // tag_h
@@ -179,6 +192,12 @@ void pcie_ss_tlp_hdr_unpack(
     }
     else if (tlp_func_is_completion(hdr->fmt_type))
     {
+        if (hdr->dm_mode)
+        {
+            ASE_ERR("DM (data mover) mode completions not yet supported\n");
+            start_simkill_countdown();
+        }
+
         svGetPartselBit(&v, tdata, 32*2, 32);
         hdr->req_id = (v >> 16) & 0xffff;
         hdr->tag = (((dw0 >> 23) & 1) << 9) |    // tag_h
@@ -191,5 +210,16 @@ void pcie_ss_tlp_hdr_unpack(
         hdr->u.cpl.cpl_status = (v >> 13) & 0x7;
         hdr->u.cpl.bcm = (v >> 12) & 1;
         hdr->u.cpl.byte_count = v & 0xfff;
+    }
+    else if (tlp_func_is_interrupt_req(hdr->fmt_type))
+    {
+        if (! hdr->dm_mode)
+        {
+            ASE_ERR("Interrupts must be DM (data mover) mode\n");
+            start_simkill_countdown();
+        }
+
+        svGetPartselBit(&v, tdata, 32*2, 16);
+        hdr->u.intr.vector_num = v;
     }
 }

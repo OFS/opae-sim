@@ -171,6 +171,13 @@ typedef struct
 }
 t_pcie_ss_hdr_cpl_upk;
 
+// Header fields used only for interrupts
+typedef struct
+{
+    uint16_t vector_num;
+}
+t_pcie_ss_hdr_intr_upk;
+
 typedef struct
 {
     uint64_t metadata;
@@ -191,7 +198,10 @@ typedef struct
     union {
         t_pcie_ss_hdr_req_upk req;
         t_pcie_ss_hdr_cpl_upk cpl;
+        t_pcie_ss_hdr_intr_upk intr;
     } u;
+
+    bool dm_mode;         // Data mover mode?
 }
 t_pcie_ss_hdr_upk;
 

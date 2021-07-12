@@ -38,17 +38,18 @@ const char* pcie_ss_func_fmttype_to_string(uint8_t fmttype)
 
     switch (fmttype)
     {
-        case PCIE_FMTTYPE_MEM_READ32:   t = "MRd32"; break;
-        case PCIE_FMTTYPE_MEM_READ64:   t = "MRd64"; break;
-        case PCIE_FMTTYPE_MEM_WRITE32:  t = "MWr32"; break;
-        case PCIE_FMTTYPE_MEM_WRITE64:  t = "MWr64"; break;
-        case PCIE_FMTTYPE_CFG_WRITE:    t = "CfgWr"; break;
-        case PCIE_FMTTYPE_CPL:          t = "Cpl"; break;
-        case PCIE_FMTTYPE_CPLD:         t = "CplD"; break;
+        case PCIE_FMTTYPE_MEM_READ32:   t = "MRd32 "; break;
+        case PCIE_FMTTYPE_MEM_READ64:   t = "MRd64 "; break;
+        case PCIE_FMTTYPE_MEM_WRITE32:  t = "MWr32 "; break;
+        case PCIE_FMTTYPE_MEM_WRITE64:  t = "MWr64 "; break;
+        case PCIE_FMTTYPE_CFG_WRITE:    t = "CfgWr "; break;
+        case PCIE_FMTTYPE_INTR:         t = "Intr  "; break;
+        case PCIE_FMTTYPE_CPL:          t = "Cpl   "; break;
+        case PCIE_FMTTYPE_CPLD:         t = "CplD  "; break;
         case PCIE_FMTTYPE_SWAP32:       t = "Swap32"; break;
         case PCIE_FMTTYPE_SWAP64:       t = "Swap64"; break;
-        case PCIE_FMTTYPE_CAS32:        t = "CaS32"; break;
-        case PCIE_FMTTYPE_CAS64:        t = "Cas64"; break;
+        case PCIE_FMTTYPE_CAS32:        t = "CaS32 "; break;
+        case PCIE_FMTTYPE_CAS64:        t = "Cas64 "; break;
         default:                        t = "Unknown"; break;
     }
 
@@ -57,8 +58,10 @@ const char* pcie_ss_func_fmttype_to_string(uint8_t fmttype)
 
 static void fprintf_pcie_ss_base(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
-    fprintf(stream, "%s len 0x%04x",
-            pcie_ss_func_fmttype_to_string(hdr->fmt_type), hdr->length);
+    fprintf(stream, "%s %s len 0x%04x",
+            pcie_ss_func_fmttype_to_string(hdr->fmt_type),
+            (hdr->dm_mode ? "DM" : "PU"),
+            hdr->length);
 }
 
 static void fprintf_pcie_ss_mem_req(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
@@ -78,6 +81,12 @@ static void fprintf_pcie_ss_cpl(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
             hdr->req_id, hdr->tag, hdr->u.cpl.low_addr);
 }
 
+static void fprintf_pcie_ss_intr(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
+{
+    fprintf_pcie_ss_base(stream, hdr);
+    fprintf(stream, " vector_num 0x%x", hdr->u.intr.vector_num);
+}
+
 void fprintf_pcie_ss_hdr(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
     if (tlp_func_is_mem_req(hdr->fmt_type))
@@ -87,6 +96,10 @@ void fprintf_pcie_ss_hdr(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
     else if (tlp_func_is_completion(hdr->fmt_type))
     {
         fprintf_pcie_ss_cpl(stream, hdr);
+    }
+    else if (tlp_func_is_interrupt_req(hdr->fmt_type))
+    {
+        fprintf_pcie_ss_intr(stream, hdr);
     }
     else
     {

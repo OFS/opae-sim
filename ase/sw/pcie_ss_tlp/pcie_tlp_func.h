@@ -58,6 +58,7 @@ typedef enum
     PCIE_FMTTYPE_MEM_WRITE32  = B8(1000000),
     PCIE_FMTTYPE_MEM_WRITE64  = B8(1100000),
     PCIE_FMTTYPE_CFG_WRITE    = B8(1000100),
+    PCIE_FMTTYPE_INTR         = B8(0110000),
     PCIE_FMTTYPE_CPL          = B8(0001010),
     PCIE_FMTTYPE_CPLD         = B8(1001010),
     PCIE_FMTTYPE_SWAP32       = B8(1001101),
@@ -86,6 +87,11 @@ static inline bool tlp_func_has_data(uint8_t fmttype)
 static inline bool tlp_func_is_completion(uint8_t fmttype)
 {
     return (fmttype & 0x1f) == PCIE_TYPE_CPL;
+}
+
+static inline bool tlp_func_is_interrupt_req (uint8_t fmttype)
+{
+   return (fmttype == PCIE_FMTTYPE_INTR);
 }
 
 static inline bool tlp_func_is_mem_req(uint8_t fmttype)

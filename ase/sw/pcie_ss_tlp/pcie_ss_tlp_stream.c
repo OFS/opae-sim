@@ -237,33 +237,6 @@ static uint32_t read_rsp_n_entries;
 
 // ========================================================================
 //
-//  Interrupt state
-//
-// ========================================================================
-
-//
-// Record states of in-flight interrupts.
-//
-typedef struct
-{
-    uint64_t start_cycle;
-    // Index of next pending interrupt response.
-    uint32_t next;
-    bool busy;
-} t_interrupt_state;
-
-// Vector of interrupt states, indexed by what must be unique
-// interrupt IDs. The number of IDs is set by pcie_param_init(), which
-// allocates the vector.
-static t_interrupt_state *interrupt_state;
-
-// Linked list of pending interrupt response, using IDs (-1 is NULL)
-static int interrupt_rsp_head;
-static int interrupt_rsp_tail;
-
-
-// ========================================================================
-//
 //  AFU to host processing
 //
 // ========================================================================
@@ -862,6 +835,36 @@ static void pcie_receive_dma_reads()
 }
 
 
+//
+// Process an interrupt request.
+//
+static void pcie_tlp_a2h_interrupt(
+    long long cycle,
+    int tlast,
+    const t_pcie_ss_hdr_upk *hdr,
+    const svBitVecVal *tdata,
+    const svBitVecVal *tuser,
+    const svBitVecVal *tkeep
+)
+{
+    uint32_t irq_id = hdr->u.intr.vector_num;
+
+    if (!tlast)
+    {
+        ASE_ERR("AFU Tx TLP - expected EOP with interrupt request:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    if (irq_id >= pcie_ss_param_cfg.num_afu_interrupts)
+    {
+        ASE_ERR("AFU Tx TLP - IRQ ID too high (max %d):\n", pcie_ss_param_cfg.num_afu_interrupts);
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    ase_interrupt_generator(irq_id);
+}
+
+
 // ========================================================================
 //
 //  Host to AFU processing
@@ -1248,14 +1251,6 @@ int pcie_ss_param_init(const t_ase_pcie_ss_param_cfg *params)
         read_rsp_data[i] = ase_malloc(pcie_ss_param_cfg.max_payload_bytes);
     }
 
-    free(interrupt_state);
-    uint64_t interrupt_state_size = sizeof(t_interrupt_state) *
-                                    pcie_ss_param_cfg.num_afu_interrupts;
-    interrupt_state = ase_malloc(interrupt_state_size);
-    memset(interrupt_state, 0, interrupt_state_size);
-    interrupt_rsp_head = -1;
-    interrupt_rsp_tail = -1;
-
     return 0;
 }
                                                        
@@ -1354,6 +1349,10 @@ int pcie_ss_stream_afu_to_host(
         pcie_ss_tlp_hdr_unpack(&hdr, tdata, tuser, tkeep);
         fprintf_pcie_ss_afu_to_host(logfile, cycle, tlast, &hdr, tdata, tuser, tkeep);
         
+        if (tlp_func_is_interrupt_req(hdr.fmt_type))
+        {
+            pcie_tlp_a2h_interrupt(cycle, tlast, &hdr, tdata, tuser, tkeep);
+        }
         if (tlp_func_is_completion(hdr.fmt_type))
         {
             if (!tlp_func_has_data(hdr.fmt_type))
