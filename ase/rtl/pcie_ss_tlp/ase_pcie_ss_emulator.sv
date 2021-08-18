@@ -82,6 +82,9 @@ module ase_pcie_ss_emulator
     // Maximum number of host->FPGA tags. (Tag values will be less than this.)
     localparam MAX_OUTSTANDING_MMIO_RD_REQS = ofs_pcie_ss_cfg_pkg::PCIE_RP_MAX_TAGS;
 
+    localparam MAX_RD_REQ_BYTES = ofs_pcie_ss_cfg_pkg::MAX_RD_REQ_BYTES;
+    localparam MAX_WR_PAYLOAD_BYTES = ofs_pcie_ss_cfg_pkg::MAX_WR_PAYLOAD_BYTES;
+
     localparam NUM_AFU_INTERRUPTS = ofs_fim_cfg_pkg::NUM_AFU_INTERRUPTS;
 
     // Power and error state
@@ -163,7 +166,8 @@ module ase_pcie_ss_emulator
     assign param_cfg.num_afu_interrupts = NUM_AFU_INTERRUPTS;
     assign param_cfg.num_of_sop = NUM_OF_SOP;
     assign param_cfg.num_of_seg = NUM_OF_SEG;
-    assign param_cfg.max_payload_bytes = 256;
+    assign param_cfg.max_rd_req_bytes = MAX_RD_REQ_BYTES;
+    assign param_cfg.max_wr_payload_bytes = MAX_WR_PAYLOAD_BYTES;
     assign param_cfg.request_completion_boundary = REQUEST_COMPLETION_BOUNDARY;
     initial pcie_ss_param_init(param_cfg);
 

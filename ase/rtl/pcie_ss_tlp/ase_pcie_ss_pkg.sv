@@ -43,7 +43,8 @@ package ase_pcie_ss_pkg;
         int num_afu_interrupts;
         int num_of_sop;                     // Maximum number of SOPs in one tdata
         int num_of_seg;                     // Maximum number of segments in one tdata
-        int max_payload_bytes;              // Maximum size of a payload
+        int max_rd_req_bytes;               // Maximum size of a DMA read request
+        int max_wr_payload_bytes;           // Maximum size of a DMA write request
         int request_completion_boundary;    // Minimum size of a read completion
     } t_ase_pcie_ss_param_cfg;
 

@@ -278,8 +278,8 @@ static void pcie_tlp_a2h_cpld(
     {
         // Allocate a payload buffer. Initialization should have happened before
         // the first flit arrived, so the configuration state is known.
-        assert(pcie_ss_param_cfg.max_payload_bytes);
-        payload = ase_malloc(pcie_ss_param_cfg.max_payload_bytes);
+        assert(pcie_ss_param_cfg.max_rd_req_bytes);
+        payload = ase_malloc(pcie_ss_param_cfg.max_rd_req_bytes);
     }
 
     // First payload DWORD in tdata (after a possible header)
@@ -305,10 +305,10 @@ static void pcie_tlp_a2h_cpld(
             ASE_ERR("AFU Tx TLP - Split MMIO completion not supported:\n");
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
-        if ((hdr.length * 4) > pcie_ss_param_cfg.max_payload_bytes)
+        if ((hdr.length * 4) > pcie_ss_param_cfg.max_rd_req_bytes)
         {
             ASE_ERR("AFU Tx TLP - MMIO completion larger than max payload bytes (%d):\n",
-                    pcie_ss_param_cfg.max_payload_bytes);
+                    pcie_ss_param_cfg.max_rd_req_bytes);
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
         if (hdr.u.cpl.byte_count > 64)
@@ -393,8 +393,8 @@ static void pcie_tlp_a2h_mwr(
     {
         // Allocate a payload buffer. Initialization should have happened before
         // the first flit arrived, so the configuration state is known.
-        assert(pcie_ss_param_cfg.max_payload_bytes);
-        payload = ase_malloc(pcie_ss_param_cfg.max_payload_bytes);
+        assert(pcie_ss_param_cfg.max_wr_payload_bytes);
+        payload = ase_malloc(pcie_ss_param_cfg.max_wr_payload_bytes);
     }
 
     // First payload DWORD in tdata (after a possible header)
@@ -410,10 +410,10 @@ static void pcie_tlp_a2h_mwr(
         tdata_payload_dw_idx = pcie_ss_cfg.tlp_hdr_dwords;
         tdata_payload_num_dw -= pcie_ss_cfg.tlp_hdr_dwords;
 
-        if ((hdr.length * 4) > pcie_ss_param_cfg.max_payload_bytes)
+        if ((hdr.length * 4) > pcie_ss_param_cfg.max_wr_payload_bytes)
         {
             ASE_ERR("AFU Tx TLP - DMA write larger than max payload bytes (%d):\n",
-                    pcie_ss_param_cfg.max_payload_bytes);
+                    pcie_ss_param_cfg.max_wr_payload_bytes);
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
         if (hdr.length == 0)
@@ -521,10 +521,10 @@ static void pcie_tlp_a2h_mrd(
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
-    if ((hdr->length * 4) > pcie_ss_param_cfg.max_payload_bytes)
+    if ((hdr->length * 4) > pcie_ss_param_cfg.max_rd_req_bytes)
     {
         ASE_ERR("AFU Tx TLP - DMA read larger than max payload bytes (%d):\n",
-                pcie_ss_param_cfg.max_payload_bytes);
+                pcie_ss_param_cfg.max_rd_req_bytes);
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
@@ -650,7 +650,7 @@ static inline uint32_t random_cpl_length(uint32_t length_rem)
 
         // Pick a random length, between the RCB and the total
         // payload size.
-        max_chunks = pcie_ss_param_cfg.max_payload_bytes /
+        max_chunks = pcie_ss_param_cfg.max_rd_req_bytes /
                      pcie_ss_param_cfg.request_completion_boundary;
 
         // rand_num == 0 is handled as a special case, used when forcing max.
@@ -1248,7 +1248,7 @@ int pcie_ss_param_init(const t_ase_pcie_ss_param_cfg *params)
     read_rsp_data = ase_malloc(sizeof(void*) * read_rsp_n_entries);
     for (int i = 0; i < read_rsp_n_entries; i += 1)
     {
-        read_rsp_data[i] = ase_malloc(pcie_ss_param_cfg.max_payload_bytes);
+        read_rsp_data[i] = ase_malloc(pcie_ss_param_cfg.max_rd_req_bytes);
     }
 
     return 0;
