@@ -1,4 +1,4 @@
-// Copyright(c) 2017, 2018, Intel Corporation
+// Copyright(c) 2017-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -45,7 +45,6 @@ uint32_t session_exist_status = NOT_ESTABLISHED;
 #include <fcntl.h>
 #include <unistd.h>
 #include "props.h"
-#define ASE_ID 0x0A5E
 #define ASE_FME_ID 0x3345678UL
 #define BBSID 0x63000023b637277UL
 #define FPGA_NUM_SLOTS 1
@@ -127,7 +126,7 @@ STATIC bool matches_filters(const fpga_properties *filter, uint32_t num_filter,
 			if (_filter->parent == NULL)
 				return false;
 
-			if (((struct _fpga_token *)_filter->parent)->ase_objtype == FPGA_ACCELERATOR)
+			if (((struct _fpga_token *)_filter->parent)->hdr.objtype == FPGA_ACCELERATOR)
 				return false;
 			else
 				*j = 1;
@@ -140,11 +139,11 @@ STATIC bool matches_filters(const fpga_properties *filter, uint32_t num_filter,
 				return false;
 			}
 		}
-		if (_filter->objtype != _tok->ase_objtype)
+		if (_filter->objtype != _tok->hdr.objtype)
 			return false;
 
 		if (FIELD_VALID(_filter, FPGA_PROPERTY_GUID)) {
-			if (0 != memcmp(_tok->accelerator_id, _filter->guid,
+			if (0 != memcmp(_tok->hdr.guid, _filter->guid,
 					sizeof(fpga_guid))) {
 				BEGIN_RED_FONTCOLOR;
 				printf("  [APP]  Filter mismatch\n");
@@ -166,8 +165,8 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 {
 	uint64_t i;
 	fpga_token ase_token[2];
-	aseToken[0].ase_objtype = FPGA_DEVICE;
-	aseToken[1].ase_objtype = FPGA_ACCELERATOR;
+	aseToken[0].hdr.objtype = FPGA_DEVICE;
+	aseToken[1].hdr.objtype = FPGA_ACCELERATOR;
 
 	if ((num_filters > 0) && (NULL == (filters))) {
 		return FPGA_INVALID_PARAM;
@@ -190,14 +189,14 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 
 	if (session_exist_status == NOT_ESTABLISHED) {
 		session_init();
-		ase_memcpy(&aseToken[0].accelerator_id, FPGA_FME_GUID, sizeof(fpga_guid));
+		ase_memcpy(&aseToken[0].hdr.guid, FPGA_FME_GUID, sizeof(fpga_guid));
 
 		mmio_read64(0x8, &afuid_data[0]);
 		mmio_read64(0x10, &afuid_data[1]);
 		// Convert afuid_data to readback_afuid
 		// e.g.: readback{0x5037b187e5614ca2, 0xad5bd6c7816273c2} -> "5037B187-E561-4CA2-AD5B-D6C7816273C2"
 		api_guid_to_fpga(afuid_data[1], afuid_data[0], readback_afuid);
-		ase_memcpy(&aseToken[1].accelerator_id, readback_afuid, sizeof(fpga_guid));
+		ase_memcpy(&aseToken[1].hdr.guid, readback_afuid, sizeof(fpga_guid));
 	}
 
 	for (i = 0; i < 2; i++)
@@ -225,13 +224,13 @@ fpga_result __FPGA_API__ ase_fpgaDestroyToken(fpga_token *token)
 
 	struct _fpga_token *_token = (struct _fpga_token *)*token;
 
-	if (_token->magic != ASE_TOKEN_MAGIC) {
+	if (_token->hdr.magic != ASE_TOKEN_MAGIC) {
 		FPGA_MSG("Invalid token");
 		return FPGA_INVALID_PARAM;
 	}
 
 	// invalidate magic (just in case)
-	_token->magic = FPGA_INVALID_MAGIC;
+	_token->hdr.magic = FPGA_INVALID_MAGIC;
 
 	free(*token);
 	*token = NULL;
@@ -322,7 +321,7 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 		return FPGA_INVALID_PARAM;
 	}
 
-	if (ASE_TOKEN_MAGIC != _token->magic)
+	if (ASE_TOKEN_MAGIC != _token->hdr.magic)
 		return FPGA_INVALID_PARAM;
 	//clear fpga_properties buffer
 	ase_memset(&_iprop, 0, sizeof(struct _fpga_properties));
@@ -330,9 +329,9 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 	result = objectid_for_ase(&_iprop.object_id);
 	if (result == 0)
 		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_OBJECTID);
-	if (ASE_TOKEN_MAGIC == _token->magic) {
+	if (ASE_TOKEN_MAGIC == _token->hdr.magic) {
 		// The input token is either an FME or an AFU.
-		if (memcmp(_token->accelerator_id, FPGA_FME_GUID, sizeof(fpga_guid)) == 0) {
+		if (memcmp(_token->hdr.guid, FPGA_FME_GUID, sizeof(fpga_guid)) == 0) {
 			_iprop.objtype = FPGA_DEVICE;
 			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_OBJTYPE);
 			_iprop.device_id = ASE_ID;
@@ -349,7 +348,7 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 			_iprop.u.fpga.bbs_version.patch = 0;
 			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BBSVERSION);
 		} else {
-			ase_memcpy(&_iprop.guid, &aseToken[1].accelerator_id, sizeof(fpga_guid));
+			ase_memcpy(&_iprop.guid, &aseToken[1].hdr.guid, sizeof(fpga_guid));
 			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_GUID);
 			_iprop.u.accelerator.state = FPGA_ACCELERATOR_ASSIGNED;
 			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_ACCELERATOR_STATE);
@@ -365,6 +364,12 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 
 		}
 	}
+	_iprop.vendor_id = 0x8086;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_VENDORID);
+
+	_iprop.device_id = ASE_ID;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_DEVICEID);
+
 	_iprop.bus = ASE_BUS;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BUS);
 
@@ -376,6 +381,10 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 
 	_iprop.socket_id = ASE_SOCKET_ID;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SOCKETID);
+
+	_iprop.interface = FPGA_IFC_SIM;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_INTERFACE);
+
 	*_prop = _iprop;
 	return FPGA_OK;
 }
@@ -391,7 +400,7 @@ fpga_result __FPGA_API__ ase_fpgaCloneToken(fpga_token src,
 		return FPGA_INVALID_PARAM;
 	}
 
-	if (_src->magic != ASE_TOKEN_MAGIC) {
+	if (_src->hdr.magic != ASE_TOKEN_MAGIC) {
 		FPGA_MSG("Invalid src");
 		return FPGA_INVALID_PARAM;
 	}
@@ -402,9 +411,7 @@ fpga_result __FPGA_API__ ase_fpgaCloneToken(fpga_token src,
 		return FPGA_NO_MEMORY;
 	}
 
-	_dst->magic = _src->magic;
-	ase_memcpy(_dst->accelerator_id, _src->accelerator_id, sizeof(fpga_guid));
-	_dst->ase_objtype = _src->ase_objtype;
+	ase_memcpy(_dst, _src, sizeof(struct _fpga_token));
 	*dst = _dst;
 	return FPGA_OK;
 }

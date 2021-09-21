@@ -1,4 +1,4 @@
-// Copyright(c) 2014-2018, Intel Corporation
+// Copyright(c) 2014-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -69,7 +69,7 @@ fpga_result __FPGA_API__ ase_fpgaOpen(fpga_token token, fpga_handle *handle, int
 
 	_token = (struct _fpga_token *)token;
 
-	if (_token->magic != ASE_TOKEN_MAGIC) {
+	if (_token->hdr.magic != ASE_TOKEN_MAGIC) {
 		FPGA_MSG("Invalid token");
 		return FPGA_INVALID_PARAM;
 	}

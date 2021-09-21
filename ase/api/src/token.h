@@ -1,4 +1,4 @@
-// Copyright(c) 2017, Intel Corporation
+// Copyright(c) 2017-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -25,6 +25,34 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 static struct _fpga_token aseToken[2] = {
-	{ .magic = 0x46504741544f4b40, .accelerator_id = {0}, .ase_objtype = FPGA_DEVICE },
-	{ .magic = 0x46504741544f4b40, .accelerator_id = {0}, .ase_objtype = FPGA_ACCELERATOR}
+	{
+		{
+			.magic = ASE_TOKEN_MAGIC,
+			.vendor_id = 0x8086,
+			.device_id = ASE_ID,
+			.segment = 0,
+			.bus = ASE_BUS,
+			.device = ASE_DEVICE,
+			.function = ASE_FUNCTION,
+			.interface = FPGA_IFC_SIM,
+			.objtype = FPGA_DEVICE,
+			.object_id = ASE_OBJID,
+			.guid = { 0, }
+		},
+	},
+	{
+		{
+			.magic = ASE_TOKEN_MAGIC,
+			.vendor_id = 0x8086,
+			.device_id = ASE_ID,
+			.segment = 0,
+			.bus = ASE_BUS,
+			.device = ASE_DEVICE,
+			.function = ASE_FUNCTION,
+			.interface = FPGA_IFC_SIM,
+			.objtype = FPGA_ACCELERATOR,
+			.object_id = ASE_OBJID,
+			.guid = { 0, }
+		}
+	}
 };

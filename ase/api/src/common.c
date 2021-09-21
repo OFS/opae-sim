@@ -1,4 +1,4 @@
-// Copyright(c) 2017, Intel Corporation
+// Copyright(c) 2017-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -238,7 +238,7 @@ struct _fpga_token *token_get_parent(struct _fpga_token *_t)
 		printf(" Token is NULL");
 	}
 
-	if (0 == memcmp(_t->accelerator_id, FPGA_FME_GUID, sizeof(fpga_guid))) {
+	if (0 == memcmp(_t->hdr.guid, FPGA_FME_GUID, sizeof(fpga_guid))) {
 		return NULL;
 	} else {
 		return &aseToken[0];
