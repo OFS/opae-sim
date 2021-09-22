@@ -506,7 +506,7 @@ ifdef DUT_VLOG_SRC_LIST
 	vlogan $(SNPS_VLOGAN_OPT) $(ASE_PLATFORM_INC) -F $(DUT_VLOG_SRC_LIST) -l vlogan-afu.log
 endif
 ifeq ($(CC), gcc)
-	vcs $(SNPS_VCS_OPT) $(ASE_TOP) $(WORK)/$(ASE_SHOBJ_SO) $(ASE_LD_SWITCHES)
+	env MAKEFLAGS="-j 1" vcs $(SNPS_VCS_OPT) $(ASE_TOP) $(WORK)/$(ASE_SHOBJ_SO) $(ASE_LD_SWITCHES)
 endif
 
 ## Questasim template ##
