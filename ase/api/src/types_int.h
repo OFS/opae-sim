@@ -1,4 +1,4 @@
-// Copyright(c) 2017, Intel Corporation
+// Copyright(c) 2017-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -57,6 +57,7 @@
 #define ASE_TOKEN_MAGIC    0x46504741544f4b40
 #define ASE_OBJID          0x0000000000a53a53
 #define ASE_NUM_SLOTS      1
+#define ASE_ID             0x0A5E
 #define ASE_BUS            1
 #define ASE_DEVICE         1
 #define ASE_FUNCTION       0
@@ -67,9 +68,7 @@
 
 /** System-wide unique FPGA resource identifier */
 struct _fpga_token {
-	uint64_t magic;
-	fpga_guid accelerator_id;
-	fpga_objtype ase_objtype;
+	fpga_token_header hdr;
 };
 
 /** Process-wide unique FPGA handle */
