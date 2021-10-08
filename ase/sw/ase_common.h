@@ -1,4 +1,4 @@
-// Copyright(c) 2014-2018, Intel Corporation
+// Copyright(c) 2014-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -570,7 +570,7 @@ struct ipc_t {
 	char path[ASE_FILEPATH_LEN];
 	int perm_flag;
 };
-struct ipc_t mq_array[ASE_MQ_INSTANCES];
+extern struct ipc_t mq_array[ASE_MQ_INSTANCES];
 
 
 /* ********************************************************************
@@ -625,9 +625,10 @@ int unregister_event(int event_handle);
 // #define ASE_BUFFER_VIEW
 
 // Backtrace data
-int bt_j, bt_nptrs;
-void *bt_buffer[4096];
-char **bt_strings;
+extern int bt_j;
+extern int bt_nptrs;
+extern void *bt_buffer[4096];
+extern char **bt_strings;
 
 
 /* *********************************************************************

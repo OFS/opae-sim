@@ -1,4 +1,4 @@
-// Copyright(c) 2014-2018, Intel Corporation
+// Copyright(c) 2014-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -92,6 +92,11 @@ void ase_error_report(const char *err_func, int err_num, int err_code)
 	END_RED_FONTCOLOR;
 }
 
+
+int bt_j = 0;
+int bt_nptrs = 0;
+void *bt_buffer[4096] = { 0, };
+char **bt_strings = NULL;
 
 /*
  * Wrapper for backtrace handler

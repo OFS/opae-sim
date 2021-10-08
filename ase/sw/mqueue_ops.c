@@ -1,4 +1,4 @@
-// Copyright(c) 2014-2017, Intel Corporation
+// Copyright(c) 2014-2021, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -27,26 +27,22 @@
 
 #include "ase_common.h"
 
-/*
- * Named pipe string array
- */
-const char *mq_name_arr[] = {
-	"app2sim_alloc_ping_smq\0",
-	"app2sim_mmioreq_smq\0",
-	"app2sim_umsg_smq\0",
-	"sim2app_alloc_pong_smq\0",
-	"sim2app_mmiorsp_smq\0",
-	"app2sim_portctrl_req_smq\0",
-	"app2sim_dealloc_ping_smq\0",
-	"sim2app_dealloc_pong_smq\0",
-	"sim2app_portctrl_rsp_smq\0",
-	"sim2app_intr_request_smq\0",
-	"sim2app_membus_rd_req_smq\0",
-	"app2sim_membus_rd_rsp_smq\0",
-	"sim2app_membus_wr_req_smq\0",
-	"app2sim_membus_wr_rsp_smq\0"
+struct ipc_t mq_array[ASE_MQ_INSTANCES] = {
+	{ { "app2sim_alloc_ping_smq"    }, { 0, }, 0 },
+	{ { "app2sim_mmioreq_smq"       }, { 0, }, 0 },
+	{ { "app2sim_umsg_smq"          }, { 0, }, 0 },
+	{ { "sim2app_alloc_pong_smq"    }, { 0, }, 0 },
+	{ { "sim2app_mmiorsp_smq"       }, { 0, }, 0 },
+	{ { "app2sim_portctrl_req_smq"  }, { 0, }, 0 },
+	{ { "app2sim_dealloc_ping_smq"  }, { 0, }, 0 },
+	{ { "sim2app_dealloc_pong_smq"  }, { 0, }, 0 },
+	{ { "sim2app_portctrl_rsp_smq"  }, { 0, }, 0 },
+	{ { "sim2app_intr_request_smq"  }, { 0, }, 0 },
+	{ { "sim2app_membus_rd_req_smq" }, { 0, }, 0 },
+	{ { "app2sim_membus_rd_rsp_smq" }, { 0, }, 0 },
+	{ { "sim2app_membus_wr_req_smq" }, { 0, }, 0 },
+	{ { "app2sim_membus_wr_rsp_smq" }, { 0, }, 0 }
 };
-
 
 /*
  * get_smq_perm_flag : Calculate perm_flag based on string name
@@ -120,20 +116,17 @@ void ipc_init(void)
 {
 	FUNC_CALL_ENTRY;
 
-	int ret;
 	int ipc_iter;
 
 	// Initialize named pipe array
 	for (ipc_iter = 0; ipc_iter < ASE_MQ_INSTANCES; ipc_iter++) {
-		// Set name
-		ase_string_copy(mq_array[ipc_iter].name,
-				mq_name_arr[ipc_iter], ASE_MQ_NAME_LEN);
+		size_t len0;
+		size_t len1;
 
 		// Compute path
-		ret = snprintf(mq_array[ipc_iter].path, ASE_FILEPATH_LEN,
-			"%s/%s", ase_workdir_path,
-			mq_array[ipc_iter].name);
-		if (ret < 0 || ret == ASE_FILEPATH_LEN) {
+		len0 = strlen(ase_workdir_path);
+		len1 = strlen(mq_array[ipc_iter].name);
+		if (len0 + len1 + 1 >= ASE_FILEPATH_LEN) {
 			ASE_ERR("Error generating file path for ASE");
 #ifdef SIM_SIDE
 			start_simkill_countdown();
@@ -142,9 +135,16 @@ void ipc_init(void)
 #endif
 		}
 
+		memcpy(mq_array[ipc_iter].path, ase_workdir_path, len0);
+		mq_array[ipc_iter].path[len0] = '/';
+		memcpy(&mq_array[ipc_iter].path[len0+1],
+		       mq_array[ipc_iter].name,
+		       len1 + 1);
+		mq_array[ipc_iter].path[len0+len1+1] = '\0';
+
 		// Set permission flag
 		mq_array[ipc_iter].perm_flag =
-		    get_smq_perm_flag(mq_name_arr[ipc_iter]);
+		    get_smq_perm_flag(mq_array[ipc_iter].name);
 		if (mq_array[ipc_iter].perm_flag == -1) {
 			ASE_ERR
 			    ("Message pipes opened up with wrong permissions --- unexpected error");
