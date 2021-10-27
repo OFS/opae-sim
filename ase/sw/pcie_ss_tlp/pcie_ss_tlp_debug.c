@@ -58,26 +58,36 @@ const char* pcie_ss_func_fmttype_to_string(uint8_t fmttype)
 
 static void fprintf_pcie_ss_base(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
-    fprintf(stream, "%s %s len 0x%04x",
+    fprintf(stream, "%s %s len_bytes 0x%04x",
             pcie_ss_func_fmttype_to_string(hdr->fmt_type),
             (hdr->dm_mode ? "DM" : "PU"),
-            hdr->length);
+            hdr->len_bytes);
 }
 
 static void fprintf_pcie_ss_mem_req(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
     fprintf_pcie_ss_base(stream, hdr);
-    fprintf(stream, " req_id 0x%04x tag 0x%02x lbe 0x%x fbe 0x%x addr 0x%016" PRIx64,
-            hdr->req_id, hdr->tag,
-            hdr->u.req.last_dw_be, hdr->u.req.first_dw_be,
-            hdr->u.req.addr);
+    if (hdr->dm_mode)
+    {
+        fprintf(stream, " req_id 0x%04x tag 0x%02x addr 0x%016" PRIx64,
+                hdr->req_id, hdr->tag,
+                hdr->u.req.addr);
+    }
+    else
+    {
+        fprintf(stream, " req_id 0x%04x tag 0x%02x lbe 0x%x fbe 0x%x addr 0x%016" PRIx64,
+                hdr->req_id, hdr->tag,
+                hdr->u.req.last_dw_be, hdr->u.req.first_dw_be,
+                hdr->u.req.addr);
+    }
 }
 
 static void fprintf_pcie_ss_cpl(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
     fprintf_pcie_ss_base(stream, hdr);
-    fprintf(stream, " cpl_id 0x%04x st %x bcm %x bytes 0x%03x req_id 0x%04x tag 0x%02x low_addr 0x%02x",
-            hdr->u.cpl.comp_id, hdr->u.cpl.cpl_status, hdr->u.cpl.bcm, hdr->u.cpl.byte_count,
+    fprintf(stream, " cpl_id 0x%04x st %x bcm %x fc %x bytes 0x%03x req_id 0x%04x tag 0x%02x low_addr 0x%02x",
+            hdr->u.cpl.comp_id, hdr->u.cpl.cpl_status, hdr->u.cpl.bcm,
+            hdr->u.cpl.fc, hdr->u.cpl.byte_count,
             hdr->req_id, hdr->tag, hdr->u.cpl.low_addr);
 }
 

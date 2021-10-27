@@ -77,7 +77,7 @@ void pcie_ss_tlp_hdr_pack(
     v |= (uint32_t)(hdr->fmt_type) << 24;
     v |= ((uint32_t)(hdr->tag >> 9) & 1) << 23;
     v |= ((uint32_t)(hdr->tag >> 8) & 1) << 19;
-    v |= (uint32_t)(hdr->length);
+    v |= (uint32_t)((hdr->len_bytes >> 2) & 0x3ff);
     svPutPartselBit(tdata, v, 0, 32);
 
     v = 0;
@@ -114,18 +114,37 @@ void pcie_ss_tlp_hdr_pack(
     }
     else if (tlp_func_is_completion(hdr->fmt_type))
     {
-        v = 0;
-        v |= (uint32_t)(hdr->req_id) << 16;
-        v |= (uint32_t)(hdr->tag & 0xff) << 8;
-        v |= (uint32_t)(hdr->u.cpl.low_addr);
-        svPutPartselBit(tdata, v, 32*2, 32);
+        if (hdr->dm_mode)
+        {
+            v = 0;
+            v |= (uint32_t)(hdr->tag) << 22;
+            v |= (uint32_t)(hdr->u.cpl.fc & 1) << 21;
+            v |= (uint32_t)((hdr->len_bytes >> 12) & 3) << 18;
+            v |= (uint32_t)(hdr->len_bytes & 3) << 16;
+            v |= (uint32_t)(hdr->u.cpl.low_addr >> 8) & 0xffff;
+            svPutPartselBit(tdata, v, 32*3, 32);
 
-        v = 0;
-        v |= (uint32_t)(hdr->u.cpl.comp_id) << 16;
-        v |= (uint32_t)(hdr->u.cpl.cpl_status) << 13;
-        v |= (uint32_t)(hdr->u.cpl.bcm) << 12;
-        v |= (uint32_t)(hdr->u.cpl.byte_count);
-        svPutPartselBit(tdata, v, 32*1, 32);
+            svPutPartselBit(tdata, hdr->u.cpl.low_addr, 32*2, 8);
+
+            v = 0;
+            v |= (uint32_t)(hdr->u.cpl.cpl_status) << 13;
+            svPutPartselBit(tdata, v, 32*1, 32);
+        }
+        else
+        {
+            v = 0;
+            v |= (uint32_t)(hdr->req_id) << 16;
+            v |= (uint32_t)(hdr->tag & 0xff) << 8;
+            v |= (uint32_t)(hdr->u.cpl.low_addr & 0x7f);
+            svPutPartselBit(tdata, v, 32*2, 32);
+
+            v = 0;
+            v |= (uint32_t)(hdr->u.cpl.comp_id) << 16;
+            v |= (uint32_t)(hdr->u.cpl.cpl_status) << 13;
+            v |= (uint32_t)(hdr->u.cpl.bcm) << 12;
+            v |= (uint32_t)(hdr->u.cpl.byte_count);
+            svPutPartselBit(tdata, v, 32*1, 32);
+        }
     }
 }
 
@@ -147,9 +166,8 @@ void pcie_ss_tlp_hdr_unpack(
     uint32_t dw0;
     svGetPartselBit(&dw0, tdata, 0, 32);
     hdr->fmt_type = (dw0 >> 24) & 0xff;
-    hdr->length = dw0 & 0x3ff;
 
-    uint32_t v, v1;
+    uint32_t v, v1, v2;
     svGetPartselBit(&v, tdata, 32*5, 32);
     hdr->bar_number = (v >> 25) & 0x7f;
     hdr->mm_mode = (v >> 24) & 1;
@@ -164,30 +182,51 @@ void pcie_ss_tlp_hdr_unpack(
 
     if (tlp_func_is_mem_req(hdr->fmt_type))
     {
-        if (hdr->dm_mode)
-        {
-            ASE_ERR("DM (data mover) mode memory requests not yet supported\n");
-            start_simkill_countdown();
-        }
-
         svGetPartselBit(&v, tdata, 32*1, 32);
-        hdr->req_id = (v >> 16) & 0xffff;
         hdr->tag = (((dw0 >> 23) & 1) << 9) |    // tag_h
                    (((dw0 >> 19) & 1) << 8) |    // tag_m
                    ((v >> 8) & 0xff);            // tag_l
-        hdr->u.req.last_dw_be = (v >> 4) & 0xf;
-        hdr->u.req.first_dw_be = v & 0xf;
 
-        if (tlp_func_is_addr64(hdr->fmt_type))
+        if (hdr->dm_mode)
         {
-            svGetPartselBit(&v, tdata, 32*3, 32);
+            hdr->len_bytes = (((v1 >> 18) & 0xfff) << 12) | // length_h
+                             ((dw0 & 0x3ff) << 2) |         // length_m
+                             ((v1 >> 16) & 3);              // length_l
+
             svGetPartselBit(&v1, tdata, 32*2, 32);
-            hdr->u.req.addr = ((uint64_t)v1 << 32) | (v & ~3);
+            svGetPartselBit(&v2, tdata, 32*3, 32);
+            hdr->u.req.addr = ((uint64_t)v1 << 32) |   // host_addr_h
+                              (v2 & ~3) |              // host_addr_m
+                              ((v >> 30) & 3);         // host_addr_l
+
+            // DM doesn't have a req_id. Compute one from PF/VF.
+            hdr->req_id = (hdr->vf_num << 4) |
+                          (hdr->vf_active << 3) |
+                          (hdr->pf_num);
+
+            // Byte enable not used (DM addresses/sizes are bytes)
+            hdr->u.req.last_dw_be = 0xf;
+            hdr->u.req.first_dw_be = 0xf;
         }
         else
         {
-            svGetPartselBit(&v, tdata, 32*2, 32);
-            hdr->u.req.addr = v;
+            hdr->len_bytes = (dw0 & 0x3ff) << 2;
+
+            hdr->req_id = (v >> 16) & 0xffff;
+            hdr->u.req.last_dw_be = (v >> 4) & 0xf;
+            hdr->u.req.first_dw_be = v & 0xf;
+
+            if (tlp_func_is_addr64(hdr->fmt_type))
+            {
+                svGetPartselBit(&v, tdata, 32*3, 32);
+                svGetPartselBit(&v1, tdata, 32*2, 32);
+                hdr->u.req.addr = ((uint64_t)v1 << 32) | (v & ~3);
+            }
+            else
+            {
+                svGetPartselBit(&v, tdata, 32*2, 32);
+                hdr->u.req.addr = v;
+            }
         }
     }
     else if (tlp_func_is_completion(hdr->fmt_type))
@@ -197,6 +236,8 @@ void pcie_ss_tlp_hdr_unpack(
             ASE_ERR("DM (data mover) mode completions not yet supported\n");
             start_simkill_countdown();
         }
+
+        hdr->len_bytes = (dw0 & 0x3ff) << 2;
 
         svGetPartselBit(&v, tdata, 32*2, 32);
         hdr->req_id = (v >> 16) & 0xffff;

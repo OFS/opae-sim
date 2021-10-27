@@ -101,6 +101,57 @@
 //
 
 //
+//
+// Encoded data mover memory request header:
+//
+// typedef struct packed {
+//     // Byte 31 - Byte 28
+//     logic   [31:0]      metadata_l;         // [DW7 31: 0] meta-data field
+//
+//     // Byte 27 - Byte 24
+//     logic   [31:0]      metadata_h;         // [DW6 31: 0] meta-data field
+//
+//     // Byte 23 - Byte 20
+//     logic   [6:0]       rsvd3;              // [DW5 31:25] Reserved
+//     logic               mm_mode;            // [DW5 24:24] Memory Mapped mode
+//     logic   [4:0]       slot_num;           // [DW5 23:19] Slot Number
+//     logic   [3:0]       rsvd4;              // [DW5 18:15] Reserved
+//     logic               vf_active;          // [DW5 14:14]
+//     logic   [10:0]      vf_num;             // [DW5 13: 3]
+//     logic   [2:0]       pf_num;             // [DW5  2: 0]
+//
+//     // Byte 19 - Byte 16
+//     logic   [1:0]       rsvd5;              // [DW4 31:30] Reserved
+//     logic               pref_present;       // [DW4 29:29] Prefix Present
+//     logic   [4:0]       pref_type;          // [DW4 28:24] Prefix Type
+//     logic   [23:0]      pref;               // [DW4 23: 0] Prefix
+//
+//     // Byte 15 - Byte 12
+//     logic   [29:0]      host_addr_m;        // [DW3 31: 2] HostAddress[31:2]
+//     logic   [1:0]       PH;                 // [DW3  1: 0]
+//
+//     // Byte 11 - Byte 8
+//     logic   [31:0]      host_addr_h;        // [DW2 31: 0] HostAddress[63:31]
+//
+//     // Byte 7 - Byte 4
+//     logic   [1:0]       host_addr_l;        // [DW1 31:30] HostAddress[1:0]
+//     logic   [11:0]      length_h;           // [DW1 29:18] Length[23:12]
+//     logic   [1:0]       length_l;           // [DW1 17:16] Length[1:0]
+//     logic   [7:0]       tag_l;              // [DW1 15: 8] Tag[7:0]
+//     logic   [7:0]       rsvd6;              // [DW1  7: 0] Reserved
+//
+//     // Byte 3 - Byte 0
+//     ReqHdr_FmtType_e    fmt_type;           // [DW0 31:24] Specify the type (read/write) - 8 bits wide
+//     logic               tag_h;              // [DW0 23:23] Tag[9]
+//     logic   [2:0]       TC;                 // [DW0 22:20]
+//     logic               tag_m;              // [DW0 19:19] Tag[8]
+//     ReqHdr_Attr_t       attr;               // [DW0 18:10] Attribute Bits - 9 bits wide
+//     logic   [9:0]       length_m;           // [DW0  9: 0] Length[11:2]
+//
+// } PCIe_ReqHdr_t;
+//
+
+//
 // Encoded power user completion header:
 //
 // typedef struct packed {
@@ -151,6 +202,61 @@
 // } PCIe_PUCplHdr_t;
 //
 
+//
+//
+// Encoded data mover completion header:
+//
+// typedef struct packed {
+//     // Byte 31 - Byte 28
+//     logic   [31:0]      metadata_l;         // [DW7 31: 0] metadata[31:0]
+//
+//     // Byte 27 - Byte 24
+//     logic   [31:0]      metadata_h;         // [DW6 31: 0] metadata[63:32]
+//
+//     // Byte 23 - Byte 20
+//     logic   [6:0]       rsvd1;              // [DW5 31:25] Reserved
+//     logic               mm_mode;            // [DW5 24:24] Memory Mapped mode
+//     logic   [4:0]       slot_num;           // [DW5 23:19] Slot Number
+//     logic   [3:0]       rsvd2;              // [DW5 18:15] Reserved
+//     logic               vf_active;          // [DW5 14:14] VF Active
+//     logic   [10:0]      vf_num;             // [DW5 13: 3] VF Number
+//     logic   [2:0]       pf_num;             // [DW5  2: 0] PF Number
+//
+//     // Byte 19 - Byte 16
+//     logic   [1:0]       rsvd3;              // [DW4 31:30] Reserved
+//     logic               pref_present;       // [DW4 29:29] Prefix Present
+//     logic   [4:0]       pref_type;          // [DW4 28:24] Prefix Type
+//     logic   [23:0]      pref;               // [DW4 23:00] Prefix
+//
+//     // Byte 15 - Byte 12
+//     logic   [9:0]       tag;                // [DW3 31:22] TAG
+//     logic               FC;                 // [DW3 21:21] FC
+//     logic               rsvd4;              // [DW3 20:20] Reserved
+//     logic   [1:0]       length_h;           // [DW3 19:18] length[13:12]
+//     logic   [1:0]       length_l;           // [DW3 17:16] length[1:0]
+//     logic   [15:0]      low_addr_h;         // [DW3 15: 0] LowerAddress[23:8]
+//
+//     // Byte 11 - Byte 8
+//     logic   [15:0]      rsvd5;              // [DW2 31:16] Reserved
+//     logic   [7:0]       rsvd6;              // [DW2 15: 8] Reserved
+//     logic   [7:0]       low_addr_l;         // [DW2  7: 0] LowerAddress[7:0]
+//
+//     // Byte 7 - Byte 4
+//     logic   [15:0]      rsvd7;              // [DW1 31:16] Reserved
+//     logic   [2:0]       cpl_status;         // [DW1 15:13] Completition Status
+//     logic   [12:0]      rsvd8;              // [DW1 12:00] Reserved
+//
+//     // Byte 3 - Byte 0
+//     ReqHdr_FmtType_e    fmt_type;           // [DW0 31:24] Specify the type (completion=4A) - 8 bits wide
+//     logic               rsvd9;              // [DW0 23:23] Reserved
+//     logic   [2:0]       TC;                 // [DW0 22:20] TC
+//     logic               rsvd10;             // [DW0 19:19] Reserved
+//     ReqHdr_Attr_t       attr;               // [DW0 18:10] Attribute Bits - 9 bits wide
+//     logic   [9:0]       length_m;           // [DW0  9: 0] length[11:2]
+//
+// } PCIe_CplHdr_t;
+//
+
 // Header fields used only in requests
 typedef struct
 {
@@ -167,7 +273,8 @@ typedef struct
     uint8_t cpl_status;
     uint8_t bcm;
     uint16_t byte_count;
-    uint8_t low_addr;
+    uint32_t low_addr;
+    bool fc;
 }
 t_pcie_ss_hdr_cpl_upk;
 
@@ -192,8 +299,8 @@ typedef struct
     uint16_t req_id;
     uint16_t tag;
 
+    uint32_t len_bytes;
     uint8_t fmt_type;
-    uint16_t length;
 
     union {
         t_pcie_ss_hdr_req_upk req;
@@ -264,7 +371,7 @@ typedef struct {
 } t_ase_pcie_ss_cfg;
 
 extern t_ase_pcie_ss_cfg pcie_ss_cfg;
-    
+
 
 // ========================================================================
 //
