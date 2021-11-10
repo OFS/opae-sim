@@ -49,6 +49,7 @@
 //
 #define HOST_MEM_REQ_READ 0
 #define HOST_MEM_REQ_WRITE 1
+#define HOST_MEM_REQ_ATOMIC 2   // Atomic requests are sent in the read queue
 typedef uint64_t ase_host_memory_req;
 
 #define HOST_MEM_STATUS_VALID 0
@@ -68,14 +69,26 @@ typedef uint64_t ase_host_memory_status;
 // simulated bus.
 #define HOST_MEM_MAX_DATA_SIZE 4096
 
+// Atomic functions, used in read requests
+#define HOST_MEM_ATOMIC_OP_FETCH_ADD 1
+#define HOST_MEM_ATOMIC_OP_SWAP 2
+#define HOST_MEM_ATOMIC_OP_CAS 3
+
 //
-// Read request, simulator to application.
+// Read request, simulator to application. Also used for atomic updates.
 //
 typedef struct {
 	uint64_t addr;
 	ase_host_memory_req req;
 	uint32_t data_bytes;
 	uint32_t tag;
+
+    // Atomic update payload. Since it is fixed length and small it is sent
+    // along with the request. Independent of size, two input functions like
+    // compare and swap always store one operand in index 0 and the other in
+    // index 1.
+    uint64_t atomic_wr_data[2];
+    uint8_t  atomic_func;
 } ase_host_memory_read_req;
 
 //

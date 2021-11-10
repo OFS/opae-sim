@@ -61,6 +61,8 @@ typedef enum
     PCIE_FMTTYPE_INTR         = B8(0110000),
     PCIE_FMTTYPE_CPL          = B8(0001010),
     PCIE_FMTTYPE_CPLD         = B8(1001010),
+    PCIE_FMTTYPE_FETCH_ADD32  = B8(1001100),
+    PCIE_FMTTYPE_FETCH_ADD64  = B8(1101100),
     PCIE_FMTTYPE_SWAP32       = B8(1001101),
     PCIE_FMTTYPE_SWAP64       = B8(1101101),
     PCIE_FMTTYPE_CAS32        = B8(1001110),
@@ -94,9 +96,19 @@ static inline bool tlp_func_is_interrupt_req (uint8_t fmttype)
    return (fmttype == PCIE_FMTTYPE_INTR);
 }
 
+static inline bool func_is_atomic_req (uint8_t fmttype)
+{
+    return ((fmttype & 0x40) && ((fmttype & 0x1c) == 0xc));
+}
+
+static inline bool func_is_atomic_cas_req (uint8_t fmttype)
+{
+    return ((fmttype == PCIE_FMTTYPE_CAS32) || (fmttype == PCIE_FMTTYPE_CAS64));
+}
+
 static inline bool tlp_func_is_mem_req(uint8_t fmttype)
 {
-    return (fmttype & 0x1f) == PCIE_TYPE_MEM_RW;
+    return (((fmttype & 0x1f) == PCIE_TYPE_MEM_RW) || func_is_atomic_req(fmttype));
 }
 
 static inline bool tlp_func_is_mem_req64(uint8_t fmttype)

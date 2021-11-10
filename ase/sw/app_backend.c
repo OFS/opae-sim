@@ -1655,6 +1655,69 @@ STATIC ase_host_memory_status membus_op_status(uint64_t va, uint64_t pa, uint64_
 
 
 /*
+ * Atomic memory update
+ */
+static uint64_t membus_atomic_upd(void *va, uint32_t data_bytes, uint32_t atomic_func,
+                                  uint64_t atomic_wr_data0, uint64_t atomic_wr_data1)
+{
+    UNUSED_PARAM(atomic_wr_data1);
+
+    if (data_bytes == 4)
+    {
+        uint32_t *m32_p = (uint32_t*)va;
+        uint32_t data0_32 = (uint32_t)atomic_wr_data0;
+        uint32_t r = 0;
+
+        switch (atomic_func)
+        {
+          case HOST_MEM_ATOMIC_OP_FETCH_ADD:
+            r = __atomic_fetch_add(m32_p, data0_32, __ATOMIC_SEQ_CST);
+            break;
+          case HOST_MEM_ATOMIC_OP_SWAP:
+            r = __atomic_exchange_n(m32_p, data0_32, __ATOMIC_SEQ_CST);
+            break;
+          case HOST_MEM_ATOMIC_OP_CAS:
+            __atomic_compare_exchange_n(m32_p, &data0_32, (uint32_t)atomic_wr_data1,
+                                        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+            r = data0_32;
+            break;
+          default:
+            ASE_ERR("Unknown atomic function: %d\n", atomic_func);
+            raise(SIGABRT);
+        }
+
+        return r;
+    }
+    else
+    {
+        uint64_t *m64_p = (uint64_t*)va;
+        uint64_t data0_64 = atomic_wr_data0;
+        uint64_t r = 0;
+
+        switch (atomic_func)
+        {
+          case HOST_MEM_ATOMIC_OP_FETCH_ADD:
+            r = __atomic_fetch_add(m64_p, data0_64, __ATOMIC_SEQ_CST);
+            break;
+          case HOST_MEM_ATOMIC_OP_SWAP:
+            r = __atomic_exchange_n(m64_p, data0_64, __ATOMIC_SEQ_CST);
+            break;
+          case HOST_MEM_ATOMIC_OP_CAS:
+            __atomic_compare_exchange_n(m64_p, &data0_64, atomic_wr_data1,
+                                        false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+            r = data0_64;
+            break;
+          default:
+            ASE_ERR("Unknown atomic function: %d\n", atomic_func);
+            raise(SIGABRT);
+        }
+
+        return r;
+    }
+}
+
+
+/*
  * Service simulator memory read/write requests.
  */
 static void *membus_rd_watcher(void *arg)
@@ -1681,7 +1744,36 @@ static void *membus_rd_watcher(void *arg)
 
 			mqueue_send(app2sim_membus_rd_rsp_tx, (char *) &rd_rsp, sizeof(rd_rsp));
 			if ((rd_rsp.status == HOST_MEM_STATUS_VALID) && rd_rsp.data_bytes) {
-				mqueue_send(app2sim_membus_rd_rsp_tx, (char *) rd_rsp.va, rd_rsp.data_bytes);
+
+                if (rd_req.req != HOST_MEM_REQ_ATOMIC)
+                {
+                    // Normal read (not atomic)
+                    mqueue_send(app2sim_membus_rd_rsp_tx, (char *) rd_rsp.va, rd_rsp.data_bytes);
+                }
+                else
+                {
+                    // Atomic update
+                    uint64_t rd_rsp_data64;
+                    rd_rsp_data64 = membus_atomic_upd((void *) rd_rsp.va, rd_req.data_bytes,
+                                                      rd_req.atomic_func,
+                                                      rd_req.atomic_wr_data[0],
+                                                      rd_req.atomic_wr_data[1]);
+
+                    if (rd_req.data_bytes == 4)
+                    {
+                        uint32_t rd_rsp_data32 = rd_rsp_data64;
+                        mqueue_send(app2sim_membus_rd_rsp_tx, (char *)&rd_rsp_data32, 4);
+                    }
+                    else if (rd_req.data_bytes == 8)
+                    {
+                        mqueue_send(app2sim_membus_rd_rsp_tx, (char *)&rd_rsp_data64, 8);
+                    }
+                    else
+                    {
+                        ASE_ERR("Illegal atomic function size: %d\n", rd_req.data_bytes);
+                        raise(SIGABRT);
+                    }
+                }
 			}
 
 			ase_host_memory_unlock();

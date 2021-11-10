@@ -46,9 +46,11 @@ const char* pcie_ss_func_fmttype_to_string(uint8_t fmttype)
         case PCIE_FMTTYPE_INTR:         t = "Intr  "; break;
         case PCIE_FMTTYPE_CPL:          t = "Cpl   "; break;
         case PCIE_FMTTYPE_CPLD:         t = "CplD  "; break;
+        case PCIE_FMTTYPE_FETCH_ADD32:  t = "FAdd32"; break;
+        case PCIE_FMTTYPE_FETCH_ADD64:  t = "FAdd64"; break;
         case PCIE_FMTTYPE_SWAP32:       t = "Swap32"; break;
         case PCIE_FMTTYPE_SWAP64:       t = "Swap64"; break;
-        case PCIE_FMTTYPE_CAS32:        t = "CaS32 "; break;
+        case PCIE_FMTTYPE_CAS32:        t = "Cas32 "; break;
         case PCIE_FMTTYPE_CAS64:        t = "Cas64 "; break;
         default:                        t = "Unknown"; break;
     }

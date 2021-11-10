@@ -426,7 +426,7 @@ static void pcie_tlp_a2h_mwr(
             ASE_ERR("AFU Tx TLP - DMA write first_be is 0:\n");
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
-        if ((hdr.len_bytes <= 4) && (hdr.u.req.last_dw_be != 0))
+        if ((hdr.len_bytes <= 4) && (hdr.u.req.last_dw_be != 0) && !hdr.dm_mode)
         {
             ASE_ERR("AFU Tx TLP - DMA write last_be must be 0 on single DWORD writes:\n");
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
@@ -541,7 +541,7 @@ static void pcie_tlp_a2h_mrd(
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
-    if ((hdr->len_bytes <= 4) && (hdr->u.req.last_dw_be != 0))
+    if ((hdr->len_bytes <= 4) && (hdr->u.req.last_dw_be != 0) && !hdr->dm_mode)
     {
         ASE_ERR("AFU Tx TLP - DMA read last_be must be 0 on single DWORD reads:\n");
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
@@ -557,6 +557,35 @@ static void pcie_tlp_a2h_mrd(
     {
         ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit reads when address fits in MRd32:\n");
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    if (func_is_atomic_req(hdr->fmt_type))
+    {
+        if (hdr->dm_mode)
+        {
+            ASE_ERR("AFU Tx TLP - Atomic functions must be PU encoded:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+
+        if (func_is_atomic_cas_req(hdr->fmt_type))
+        {
+            if ((hdr->len_bytes != 8) && (hdr->len_bytes != 16))
+            {
+                ASE_ERR("AFU Tx TLP - Atomic CAS must specify either 8 or 16 bytes:\n");
+                pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+            }
+        }
+        else if ((hdr->len_bytes != 4) && (hdr->len_bytes != 8))
+        {
+            ASE_ERR("AFU Tx TLP - Atomic FAdd and SWAP must specify either 4 or 8 bytes:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+
+        if ((hdr->u.req.first_dw_be != 0xf) || ((hdr->len_bytes > 4) && (hdr->u.req.last_dw_be != 0xf)))
+        {
+            ASE_ERR("AFU Tx TLP - Atomic functions may not use FBE/LBE masks:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
     }
 
     if (hdr->tag >= pcie_ss_param_cfg.max_outstanding_dma_rd_reqs)
@@ -577,7 +606,7 @@ static void pcie_tlp_a2h_mrd(
     dma_read_state[tag].start_cycle = cycle;
     memcpy(&dma_read_state[tag].req_hdr, hdr, sizeof(t_pcie_ss_hdr_upk));
 
-    ase_host_memory_read_req rd_req;
+    static ase_host_memory_read_req rd_req;
     rd_req.req = HOST_MEM_REQ_READ;
     rd_req.addr = hdr->u.req.addr;
     if ((hdr->len_bytes <= 4) && ! hdr->u.req.last_dw_be && ! hdr->u.req.first_dw_be)
@@ -590,6 +619,68 @@ static void pcie_tlp_a2h_mrd(
         rd_req.data_bytes = hdr->len_bytes;
     }
     rd_req.tag = tag;
+
+    if (func_is_atomic_req(hdr->fmt_type))
+    {
+        // Set the atomic function and pass the source operands
+        rd_req.req = HOST_MEM_REQ_ATOMIC;
+
+        if (func_is_atomic_cas_req(hdr->fmt_type))
+        {
+            // Completion payload of atomic CAS is half the request size
+            rd_req.data_bytes >>= 1;
+            dma_read_state[tag].req_hdr.len_bytes >>= 1;
+        }
+
+        // Extract possible operands into 32 bit chunks
+        uint32_t atomic_opers[4];
+        for (int i = 0; i < 4; i += 1)
+        {
+            svGetPartselBit(&atomic_opers[i], tdata, (i + pcie_ss_cfg.tlp_hdr_dwords) * 32, 32);
+        }
+
+        switch (hdr->fmt_type)
+        {
+          case PCIE_FMTTYPE_FETCH_ADD32:
+            rd_req.atomic_func = HOST_MEM_ATOMIC_OP_FETCH_ADD;
+            rd_req.atomic_wr_data[0] = atomic_opers[0];
+            rd_req.atomic_wr_data[1] = 0;
+            break;
+          case PCIE_FMTTYPE_FETCH_ADD64:
+            rd_req.atomic_func = HOST_MEM_ATOMIC_OP_FETCH_ADD;
+            rd_req.atomic_wr_data[0] = ((uint64_t)atomic_opers[1] << 32) | atomic_opers[0];
+            rd_req.atomic_wr_data[1] = 0;
+            break;
+          case PCIE_FMTTYPE_SWAP32:
+            rd_req.atomic_func = HOST_MEM_ATOMIC_OP_SWAP;
+            rd_req.atomic_wr_data[0] = atomic_opers[0];
+            rd_req.atomic_wr_data[1] = 0;
+            break;
+          case PCIE_FMTTYPE_SWAP64:
+            rd_req.atomic_func = HOST_MEM_ATOMIC_OP_SWAP;
+            rd_req.atomic_wr_data[0] = ((uint64_t)atomic_opers[1] << 32) | atomic_opers[0];
+            rd_req.atomic_wr_data[1] = 0;
+            break;
+          case PCIE_FMTTYPE_CAS32:
+          case PCIE_FMTTYPE_CAS64:
+            rd_req.atomic_func = HOST_MEM_ATOMIC_OP_CAS;
+            if (rd_req.data_bytes == 4)
+            {
+                rd_req.atomic_wr_data[0] = atomic_opers[0];
+                rd_req.atomic_wr_data[1] = atomic_opers[1];
+            }
+            else
+            {
+                rd_req.atomic_wr_data[0] = ((uint64_t)atomic_opers[1] << 32) | atomic_opers[0];
+                rd_req.atomic_wr_data[1] = ((uint64_t)atomic_opers[3] << 32) | atomic_opers[2];
+            }
+            break;
+          default:
+            ASE_ERR("Unexpected atomic function:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+    }
+
     mqueue_send(sim2app_membus_rd_req_tx, (char *)&rd_req, sizeof(rd_req));
 
     // Update count of pending read responses
@@ -1373,7 +1464,7 @@ int pcie_ss_stream_afu_to_host(
         }
         else if (tlp_func_is_mem_req(hdr.fmt_type))
         {
-            if (tlp_func_is_mwr_req(hdr.fmt_type))
+            if (tlp_func_is_mwr_req(hdr.fmt_type) && !func_is_atomic_req(hdr.fmt_type))
             {
                 // DMA write
                 pcie_tlp_a2h_mwr(cycle, tlast, &hdr, tdata, tuser, tkeep);

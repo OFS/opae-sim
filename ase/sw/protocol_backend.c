@@ -438,7 +438,7 @@ void rd_memline_req_dex(cci_pkt *pkt)
 	FUNC_CALL_ENTRY;
 
 	uint64_t phys_addr;
-	ase_host_memory_read_req rd_req;
+	static ase_host_memory_read_req rd_req;
 
 	phys_addr = (uint64_t) pkt->cl_addr << 6;
 
