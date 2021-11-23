@@ -509,7 +509,7 @@ static void pcie_tlp_a2h_mwr(
 static void pcie_tlp_a2h_mrd(
     long long cycle,
     int tlast,
-    const t_pcie_ss_hdr_upk *hdr,
+    t_pcie_ss_hdr_upk *hdr,
     const svBitVecVal *tdata,
     const svBitVecVal *tuser,
     const svBitVecVal *tkeep
@@ -531,31 +531,6 @@ static void pcie_tlp_a2h_mrd(
     if (hdr->len_bytes == 0)
     {
         ASE_ERR("AFU Tx TLP - DMA read length is 0:\n");
-        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
-    }
-
-    if ((hdr->u.req.first_dw_be == 0) &&
-        ((hdr->u.req.last_dw_be != 0) || (hdr->len_bytes > 4)))
-    {
-        ASE_ERR("AFU Tx TLP - DMA read first_be is 0 and not a zero-length read (fence):\n");
-        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
-    }
-
-    if ((hdr->len_bytes <= 4) && (hdr->u.req.last_dw_be != 0) && !hdr->dm_mode)
-    {
-        ASE_ERR("AFU Tx TLP - DMA read last_be must be 0 on single DWORD reads:\n");
-        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
-    }
-
-    if ((hdr->len_bytes > 4) && (hdr->u.req.last_dw_be == 0))
-    {
-        ASE_ERR("AFU Tx TLP - DMA read last_be is 0 on a multiple DWORD read:\n");
-        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
-    }
-
-    if ((hdr->u.req.addr <= 0xffffffff) && tlp_func_is_addr64(hdr->fmt_type))
-    {
-        ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit reads when address fits in MRd32:\n");
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
@@ -581,11 +556,45 @@ static void pcie_tlp_a2h_mrd(
             pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
         }
 
-        if ((hdr->u.req.first_dw_be != 0xf) || ((hdr->len_bytes > 4) && (hdr->u.req.last_dw_be != 0xf)))
+        if (hdr->u.req.first_dw_be || hdr->u.req.last_dw_be)
         {
-            ASE_ERR("AFU Tx TLP - Atomic functions may not use FBE/LBE masks:\n");
+            ASE_ERR("AFU Tx TLP - FBE/LBE fields are reserved in atomic functions (PCIe spec. 2.2.7). Must be 0:\n");
             pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
         }
+        else
+        {
+            // Now that we have checked, force FBE and LBE on atomics to more
+            // standard values so the simulator manages handles like normal
+            // requests.
+            hdr->u.req.first_dw_be = 0xf;
+            if (hdr->len_bytes > 4)
+                hdr->u.req.last_dw_be = 0xf;
+        }
+    }
+
+    if ((hdr->u.req.first_dw_be == 0) &&
+        ((hdr->u.req.last_dw_be != 0) || (hdr->len_bytes > 4)))
+    {
+        ASE_ERR("AFU Tx TLP - DMA read first_be is 0 and not a zero-length read (fence):\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    if ((hdr->len_bytes <= 4) && (hdr->u.req.last_dw_be != 0) && !hdr->dm_mode)
+    {
+        ASE_ERR("AFU Tx TLP - DMA read last_be must be 0 on single DWORD reads:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    if ((hdr->len_bytes > 4) && (hdr->u.req.last_dw_be == 0))
+    {
+        ASE_ERR("AFU Tx TLP - DMA read last_be is 0 on a multiple DWORD read:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    if ((hdr->u.req.addr <= 0xffffffff) && tlp_func_is_addr64(hdr->fmt_type))
+    {
+        ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit reads when address fits in MRd32:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
     if (hdr->tag >= pcie_ss_param_cfg.max_outstanding_dma_rd_reqs)
