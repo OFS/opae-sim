@@ -189,9 +189,9 @@ void pcie_ss_tlp_hdr_unpack(
 
         if (hdr->dm_mode)
         {
-            hdr->len_bytes = (((v1 >> 18) & 0xfff) << 12) | // length_h
-                             ((dw0 & 0x3ff) << 2) |         // length_m
-                             ((v1 >> 16) & 3);              // length_l
+            hdr->len_bytes = (((v >> 18) & 0xfff) << 12) | // length_h
+                             ((dw0 & 0x3ff) << 2) |        // length_m
+                             ((v >> 16) & 3);              // length_l
 
             svGetPartselBit(&v1, tdata, 32*2, 32);
             svGetPartselBit(&v2, tdata, 32*3, 32);

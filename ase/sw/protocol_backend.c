@@ -1377,8 +1377,10 @@ int ase_ready(void)
 		ASE_INFO("Starting ase_regress.sh script...\n");
 		if ((sv2c_script_filepath != NULL)
 		    && (strlen(sv2c_script_filepath) != 0)) {
-			snprintf(app_run_cmd, ASE_FILEPATH_LEN, "%s &",
-				 sv2c_script_filepath);
+			int n = snprintf(app_run_cmd, ASE_FILEPATH_LEN, "%s &", sv2c_script_filepath);
+			if ((n < 0) || (n > ASE_FILEPATH_LEN)) {
+				ASE_ERR("sv2c_script_filepath is too long");
+			}
 		} else {
 			ase_string_copy(app_run_cmd, "./ase_regress.sh &",
 					ASE_FILEPATH_LEN);

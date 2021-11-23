@@ -1226,6 +1226,10 @@ static bool pcie_tlp_h2a_cpld(
         {
             hdr.u.cpl.low_addr += pcie_cpl_lower_addr_byte_offset(req_hdr->u.req.first_dw_be);
         }
+        if (hdr.dm_mode)
+        {
+            hdr.metadata = req_hdr->metadata;
+        }
 
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
         sop = 1;
