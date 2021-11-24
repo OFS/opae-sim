@@ -207,6 +207,8 @@ typedef struct dma_read_cpl
     struct dma_read_cpl *next;
     struct dma_read_cpl *prev;
     t_dma_read_state *state;
+    // Read response data
+    uint32_t *read_rsp_data;
     // Length of this individual packet
     uint16_t len_dw;
     // Offset to the DW of the data for this packet. Non-zero only when
@@ -229,10 +231,6 @@ static uint32_t dma_read_cpl_dw_rem;
 
 static uint32_t num_dma_reads_pending;
 static uint32_t num_dma_writes_pending;
-
-// Buffer space, indexed by tag, for holding read responses.
-static uint32_t **read_rsp_data;
-static uint32_t read_rsp_n_entries;
 
 
 // ========================================================================
@@ -857,9 +855,10 @@ static void pcie_receive_dma_reads()
             }
 
             // Get the data, which was sent separately
+            uint32_t *read_rsp_data = ase_malloc(pcie_ss_param_cfg.max_rd_req_bytes);
+            if (NULL == read_rsp_data) ASE_ERR("Out of memory");
             if (rd_rsp.data_bytes) {
-                uint32_t *buf = read_rsp_data[rd_rsp.tag];
-                while ((status = mqueue_recv(app2sim_membus_rd_rsp_rx, (char *)buf, rd_rsp.data_bytes)) != ASE_MSG_PRESENT) {
+                while ((status = mqueue_recv(app2sim_membus_rd_rsp_rx, (char *)read_rsp_data, rd_rsp.data_bytes)) != ASE_MSG_PRESENT) {
                     if (status == ASE_MSG_ERROR) break;
                 }
             }
@@ -891,6 +890,7 @@ static void pcie_receive_dma_reads()
             {
                 t_dma_read_cpl *read_cpl = ase_malloc(sizeof(t_dma_read_cpl));
                 read_cpl->state = rd_state;
+                read_cpl->read_rsp_data = read_rsp_data;
 
                 // Pick a random length, between the request completion
                 // boundary and the total payload size.
@@ -1231,6 +1231,12 @@ static bool pcie_tlp_h2a_cpld(
             hdr.metadata = req_hdr->metadata;
         }
 
+        // Last packet for the original request? If so, free the tag.
+        if (dma_cpl->is_last)
+        {
+            dma_cpl->state->busy = false;
+        }
+
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
         sop = 1;
         dma_read_cpl_dw_rem = dma_cpl->len_dw;
@@ -1254,7 +1260,7 @@ static bool pcie_tlp_h2a_cpld(
         }
 
         // Copy the next data group to the channel
-        const uint32_t *rsp_data = read_rsp_data[req_hdr->tag];
+        const uint32_t *rsp_data = dma_cpl->read_rsp_data;
         for (int i = 0; i < rsp_dw; i += 1)
         {
             svPutPartselBit(tdata, rsp_data[start_dw + i], (i + tdata_start_dw) * 32, 32);
@@ -1271,11 +1277,10 @@ static bool pcie_tlp_h2a_cpld(
     // Pop request
     if (*tlast)
     {
-        // Last packet for the original request? If so, free the tag. There
-        // may be multiple completion packets associated with a single read request.
         if (dma_cpl->is_last)
         {
-            dma_cpl->state->busy = false;
+            // Done with the data
+            free(dma_cpl->read_rsp_data);
         }
 
         dma_read_cpl_head = dma_cpl->next;
@@ -1338,24 +1343,6 @@ int pcie_ss_param_init(const t_ase_pcie_ss_param_cfg *params)
     dma_read_state = ase_malloc(dma_state_size);
     memset(dma_read_state, 0, dma_state_size);
     dma_read_cpl_dw_rem = 0;
-
-    // Free array of buffers for each read tag
-    if (read_rsp_n_entries)
-    {
-        for (int i = 0; i < read_rsp_n_entries; i += 1)
-        {
-            free(read_rsp_data[i]);
-        }
-        free(read_rsp_data);
-    }
-
-    // Allocate a buffer for each possible read tag
-    read_rsp_n_entries = pcie_ss_param_cfg.max_outstanding_dma_rd_reqs;
-    read_rsp_data = ase_malloc(sizeof(void*) * read_rsp_n_entries);
-    for (int i = 0; i < read_rsp_n_entries; i += 1)
-    {
-        read_rsp_data[i] = ase_malloc(pcie_ss_param_cfg.max_rd_req_bytes);
-    }
 
     return 0;
 }
