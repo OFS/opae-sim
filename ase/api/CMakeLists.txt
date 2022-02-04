@@ -71,7 +71,7 @@ target_include_directories(ase PUBLIC
   PRIVATE src
   $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/../include>
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../sw>
-  PRIVATE ${OPAE_LIBS_ROOT}/libopae-c)
+  PRIVATE ${OPAE_LIB_SOURCE}/libopae-c)
 
 set_target_properties(ase PROPERTIES
   VERSION ${ASE_VERSION}
