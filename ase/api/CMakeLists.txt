@@ -66,10 +66,10 @@ target_link_libraries(ase
 # compiling the library, and will be added to consumers' build
 # paths. Keep current directory private.
 target_include_directories(ase PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/../include>
   $<BUILD_INTERFACE:${OPAE_INCLUDE_PATH}>
   $<INSTALL_INTERFACE:include>
   PRIVATE src
-  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/../include>
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../sw>
   PRIVATE ${OPAE_LIB_SOURCE}/libopae-c)
 
