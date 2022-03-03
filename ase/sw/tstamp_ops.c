@@ -35,14 +35,14 @@
 // Timestamp based isolation
 // -----------------------------------------------------------------------
 #if defined(__i386__)
-static __inline__ unsigned long long rdtsc(void)
+__inline__ unsigned long long rdtsc(void)
 {
 	unsigned long long int x;
 	__asm__ volatile (".byte 0x0f, 0x31":"=A" (x));
 	return x;
 }
 #elif defined(__x86_64__)
-static __inline__ unsigned long long rdtsc(void)
+__inline__ unsigned long long rdtsc(void)
 {
 	unsigned hi, lo;
 	__asm__ __volatile__("rdtsc":"=a"(lo), "=d"(hi));
@@ -50,7 +50,7 @@ static __inline__ unsigned long long rdtsc(void)
 					    32);
 }
 #elif defined(__aarch64__)
-static __inline__ unsigned long long rdtsc(void)
+__inline__ unsigned long long rdtsc(void)
 {
 	// copied from https://github.com/google/benchmark/blob/eec9a8e4976a397988c15e5a4b71a542375a2240/src/cycleclock.h#L127
 	// System timer of ARMv8 runs at a different frequency than the CPU's.

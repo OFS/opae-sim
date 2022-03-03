@@ -2006,7 +2006,14 @@ int unregister_event(int event_handle)
  * ASE_SIMKILL <dummy number>	   | (X)
  *
  */
+ 
+#ifdef __clang__
+void __attribute__ ((optnone)) ase_portctrl(ase_portctrl_cmd command, int value)
+#elif __GNUC__
 void __attribute__ ((optimize("O0"))) ase_portctrl(ase_portctrl_cmd command, int value)
+#else
+void ase_portctrl(ase_portctrl_cmd command, int value)
+#endif
 {
 	char ctrl_msg[ASE_MQ_MSGSIZE]  = { 0 };
 	char rx_msg[ASE_MQ_MSGSIZE] = { 0 };
