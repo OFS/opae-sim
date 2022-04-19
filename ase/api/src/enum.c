@@ -370,6 +370,12 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 	_iprop.device_id = ASE_ID;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_DEVICEID);
 
+	_iprop.subsystem_vendor_id = 0x8086;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SUB_VENDORID);
+
+	_iprop.subsystem_device_id = ASE_ID;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SUB_DEVICEID);
+
 	_iprop.bus = ASE_BUS;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BUS);
 

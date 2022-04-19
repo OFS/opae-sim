@@ -37,7 +37,9 @@ static struct _fpga_token aseToken[2] = {
 			.interface = FPGA_IFC_SIM,
 			.objtype = FPGA_DEVICE,
 			.object_id = ASE_OBJID,
-			.guid = { 0, }
+			.guid = { 0, },
+			.subsystem_vendor_id = 0x8086,
+			.subsystem_device_id = ASE_ID
 		},
 	},
 	{
@@ -52,7 +54,9 @@ static struct _fpga_token aseToken[2] = {
 			.interface = FPGA_IFC_SIM,
 			.objtype = FPGA_ACCELERATOR,
 			.object_id = ASE_OBJID,
-			.guid = { 0, }
+			.guid = { 0, },
+			.subsystem_vendor_id = 0x8086,
+			.subsystem_device_id = ASE_ID
 		}
 	}
 };
