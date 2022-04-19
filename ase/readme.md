@@ -3,7 +3,7 @@
 libase is implemented as a plugin for libopae-c following the plugin model as
 described [here](http://github.com/OPAE/opae-sdk/pluginis/README.md)
 
-## Building agains OPAE
+## Building against OPAE
 Building libase assumes a development package is installed on the target build
 system. In addition to the runtime libraries, the development package includes
 other collateral helpful for development of opae-based solutions. Specifically,
