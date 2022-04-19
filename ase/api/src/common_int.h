@@ -39,10 +39,9 @@
 #include <sys/mman.h>  /* mmap & munmap */
 #include <sys/time.h>  /* struct timeval */
 
-#include "opae/utils.h"
+#include <opae/plugin.h>
 #include "types_int.h"
 #include "wsid_list_int.h"
-#include "props.h"
 
 /* Macro for defining symbol visibility */
 #define __FPGA_API__ __attribute__((visibility("default")))
