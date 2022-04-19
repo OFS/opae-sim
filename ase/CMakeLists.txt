@@ -30,6 +30,8 @@ project(ase)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include(ase_libs)
 include(opae_devpkgs_cmake_install)
+find_package(opae REQUIRED)
+include(OPAEGit)
 
 set(ASE_VERSION_MAJOR    1 CACHE STRING "ASE major version" FORCE)
 set(ASE_VERSION_MINOR    4 CACHE STRING "ASE minor version" FORCE)

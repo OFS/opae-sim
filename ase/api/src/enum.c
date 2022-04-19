@@ -31,6 +31,7 @@
 #include <opae/enum.h>
 #include <opae/properties.h>
 #include <opae/utils.h>
+#include <opae/plugin.h>
 #include "common_int.h"
 #include "token.h"
 #include <stdlib.h>
@@ -44,7 +45,6 @@ uint32_t session_exist_status = NOT_ESTABLISHED;
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include "props.h"
 #define ASE_FME_ID 0x3345678UL
 #define BBSID 0x63000023b637277UL
 #define FPGA_NUM_SLOTS 1

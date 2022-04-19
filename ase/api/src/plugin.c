@@ -30,7 +30,6 @@
 
 #include <dlfcn.h>
 #include "common_int.h"
-#include "adapter.h"
 
 int __FPGA_API__ ase_plugin_initialize(void)
 {
