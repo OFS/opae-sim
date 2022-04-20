@@ -28,4 +28,11 @@ cmake_minimum_required(VERSION 2.8.12)
 
 project(opae-sim)
 
+get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
+if ("${LIB64}" STREQUAL "TRUE")
+    set(OPAE_LIB_INSTALL_DIR "lib64" CACHE INTERNAL "arch specific library")
+else()
+    set(OPAE_LIB_INSTALL_DIR "lib" CACHE INTERNAL "arch specific library")
+endif()
+
 add_subdirectory(ase)
