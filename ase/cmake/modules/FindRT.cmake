@@ -18,4 +18,4 @@ if(librt_LIBRARIES)
 endif(librt_LIBRARIES)
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(librt REQUIRED_VARS librt_LIBRARIES)
+find_package_handle_standard_args(librt REQUIRED_VARS librt_LIBRARIES NAME_MISMATCHED)
