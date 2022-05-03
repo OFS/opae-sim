@@ -29,6 +29,9 @@ cmake_minimum_required(VERSION 2.8.12)
 project("ase")
 find_package(Threads REQUIRED)
 find_package(RT REQUIRED)
+find_package(opae 2.1.0 REQUIRED)
+include(OPAEPlugin)
+include_directories(${opae_INCLUDE_DIRS})
 
 add_definitions(-DHAVE_CONFIG_H=1)
 set(API_DIR ${PROJECT_SOURCE_DIR})
@@ -56,11 +59,14 @@ set(ASEAPI_SRC
   ${API_DIR}/src/plugin.c
   ${API_DIR}/src/init.c)
 
-add_library(ase SHARED ${ASEAPI_SRC})
+add_library(ase MODULE ${ASEAPI_SRC})
 target_link_libraries(ase
-  ${libjson-c_LIBRARIES}
-  ${libuuid_LIBRARIES}
-  ${librt_LIBRARIES})
+    PRIVATE
+        ${libjson-c_LIBRARIES}
+        ${libuuid_LIBRARIES}
+        ${librt_LIBRARIES}
+        opae-c
+)
 
 # Define headers for this library. PUBLIC headers are used for
 # compiling the library, and will be added to consumers' build
@@ -71,12 +77,19 @@ target_include_directories(ase PUBLIC
   $<INSTALL_INTERFACE:include>
   PRIVATE src
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../sw>
-  PRIVATE ${OPAE_LIB_SOURCE}/libopae-c)
+  PRIVATE ${OPAE_LIB_SOURCE}/libopae-c
+)
 
-set_target_properties(ase PROPERTIES
+# create an OPAE API C library that loads ase plugin
+opae_add_shared_plugin(
+    TARGET opae-c-ase
+    PLUGIN ase
+)
+
+set_target_properties(opae-c-ase PROPERTIES
   VERSION ${ASE_VERSION}
   SOVERSION ${ASE_VERSION_MAJOR})
 
-install(TARGETS ase
+install(TARGETS ase opae-c-ase
   LIBRARY DESTINATION ${OPAE_LIB_INSTALL_DIR}
   COMPONENT opaecase)
