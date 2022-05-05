@@ -236,6 +236,7 @@ struct _fpga_token *token_get_parent(struct _fpga_token *_t)
 {
 	if (_t == NULL) {
 		printf(" Token is NULL");
+		return NULL;
 	}
 
 	if (0 == memcmp(_t->hdr.guid, FPGA_FME_GUID, sizeof(fpga_guid))) {

@@ -288,10 +288,8 @@ void *ase_malloc(size_t size)
 		FUNC_CALL_EXIT;
 #ifdef SIM_SIDE
 		start_simkill_countdown();
-		exit(1);	// Klocwork fix
-#else
-		return buffer;
 #endif
+		exit(1);	// Klocwork fix
 	} else {
 		ase_memset(buffer, 0, size);
 		FUNC_CALL_EXIT;
@@ -623,38 +621,9 @@ void ase_string_copy(char *dest, const char *src, size_t num_bytes)
 {
 	FUNC_CALL_ENTRY;
 
-	int dest_strlen;
-
-	// Allocate memory if not already done
-	if (dest == NULL) {
-		ASE_ERR
-			("** ERROR ** => String copy destination not allocated.. Exiting\n");
-#ifdef SIM_SIDE
-		start_simkill_countdown();
-#else
-		exit(1);
-#endif
-	} else {
-		// Use snprintf as a copy mechanism
-		snprintf(dest, num_bytes, "%s", src);
-
-		// Find length
-		dest_strlen = strlen(dest);
-
-		// Terminate length, or kill
-		if ((unsigned)dest_strlen < num_bytes) {
-			dest[dest_strlen] = '\0';
-		} else {
-			ASE_ERR
-				("** Internal Error ** => Invalid null termination during string copy [%d]\n",
-				 dest_strlen);
-#ifdef SIM_SIDE
-			start_simkill_countdown();
-#else
-			exit(1);
-#endif
-		}
-	}
+	// Reserve a byte for NULL
+	strncpy(dest, src, num_bytes-1);
+	dest[num_bytes-1] = 0;
 
 	FUNC_CALL_EXIT;
 }
