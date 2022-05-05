@@ -1038,7 +1038,7 @@ void mmio_write512(int offset, const void *data)
 		void *mmio_vaddr;
 		mmio_vaddr =
 			(void *) ((uint64_t) mmio_afu_vbase + offset);
-		ase_memcpy(mmio_vaddr, (char *) &data, 64);
+		ase_memcpy(mmio_vaddr, data, 64);
 
 		// Display
 		ASE_MSG("MMIO Write     : tid = 0x%03x, offset = 0x%x, data = 0x%08x\n",
@@ -1883,6 +1883,7 @@ static void *membus_wr_watcher(void *arg)
 		}
 	}
 
+	ase_free_buffer(data);
 	printf("Stop MEMBUS WR REQ\n");
 
 	return 0;
