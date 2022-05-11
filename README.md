@@ -40,17 +40,19 @@ CMake configuration files. CMake searches common installation prefixes (like
 /usr or /usr/local) when finding the OPAE package. If OPAE development files are
 installed at a non-standard prefix, one may help CMake find it by setting a cmake/environment variable as described below.
 * CMAKE_INSTALL_PREFIX : cmake variable that points to an installation prefix and will also control
-where ASE libraries are installed
-* CMAKE_PREFIX_PATH : environment variable that points to an installation prefix.
-* opae_DIR : environment variable that points to OPAE's CMake configuration files installed in
-`{prefix}/lib/opae-{opae_version}`
+where ASE libraries are installed. Use this option when OPAE is installed under
+the same prefix where you wish to install ASE artifacts.
+* CMAKE_PREFIX_PATH : Environment variable that points to an installation prefix. This only helps to find OPAE.
+* opae_DIR : Environment variable that points to OPAE's CMake configuration files installed in
+`{prefix}/lib/opae-{opae_version}`. This only helps to find OPAE.
 
 
 Example:
 OPAE 2.0.1 is installed using prefix /some/arbitrary/path.
 Then, to configure CMake for this project, run:
 
-Using CMAKE_INSTALL_PREFIX cmake variable:
+Using CMAKE_INSTALL_PREFIX cmake variable to find OPAE and install ASE into the
+same prefix.
 ```bash
 > git clone https://github.com/OPAE/opae-sim.git
 > cd opae-sim
