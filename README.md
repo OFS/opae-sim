@@ -18,4 +18,61 @@ supported.
 * While accelerators with multiple AFU host channels can be run with ASE, only one port
 will receive transactions. All MMIO traffic will be directed to a single AFU port.
 
-To build and install ASE please follow the instructions in the [README](ase/README.md).
+
+## libase plugin
+libase is implemented as a plugin for libopae-c following the plugin model as
+described [here](http://github.com/OPAE/opae-sdk/pluginis/README.md)
+
+
+## libopae-c-ase
+libopae-c-ase is an OPAE API implementation that registers the ase plugin so
+that it is loaded automatically. This library is created by using
+`opae_add_shared_plugin` cmake function that dynamically generates source code
+and calls required directives to generate libopae-c-ase as described above.
+
+## Building against OPAE
+Building libase assumes a development package is installed on the target build
+system. In addition to the runtime libraries, the development package includes
+other collateral helpful for development of OPAE-based solutions. Specifically,
+headers and CMake configuration files will be needed by this project.
+This project includes the CMake directive `find_package(opae)` which can find the
+CMake configuration files. CMake searches common installation prefixes (like
+/usr or /usr/local) when finding the OPAE package. If OPAE development files are
+installed at a non-standard prefix, one may help CMake find it by setting a cmake/environment variable as described below.
+* CMAKE_INSTALL_PREFIX : cmake variable that points to an installation prefix and will also control
+where ASE libraries are installed
+* CMAKE_PREFIX_PATH : environment variable that points to an installation prefix.
+* opae_DIR : environment variable that points to OPAE's CMake configuration files installed in
+`{prefix}/lib/opae-{opae_version}`
+
+
+Example:
+OPAE 2.0.1 is installed using prefix /some/arbitrary/path.
+Then, to configure CMake for this project, run:
+
+Using CMAKE_INSTALL_PREFIX cmake variable:
+```bash
+> git clone https://github.com/OPAE/opae-sim.git
+> cd opae-sim
+> mkdir build
+> cmake -DCMAKE_INSTALL_PREFIX=/some/arbitrary/path ..
+> make
+```
+
+Using CMAKE_PREFIX_PATH environment variable:
+```bash
+> git clone https://github.com/OPAE/opae-sim.git
+> cd opae-sim
+> mkdir build
+> CMAKE_PREFIX_PATH=/some/arbitrary/path cmake ..
+> make
+```
+
+Using opae_DIR environment variable:
+```bash
+> git clone https://github.com/OPAE/opae-sim.git
+> cd opae-sim
+> mkdir build
+> opae_DIR=/some/arbitrary/path/lib/opae-2.0.1 cmake ..
+> make
+```
