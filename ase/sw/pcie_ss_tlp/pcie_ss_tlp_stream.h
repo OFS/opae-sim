@@ -257,12 +257,24 @@
 // } PCIe_CplHdr_t;
 //
 
+// Attributes (read/write requests)
+typedef struct
+{
+    bool ln;
+    bool th;
+    bool td;
+    bool ep;
+    uint8_t at;
+}
+t_pcie_ss_hdr_req_attr_upk;
+
 // Header fields used only in requests
 typedef struct
 {
     uint64_t addr;
     uint8_t last_dw_be;
     uint8_t first_dw_be;
+    t_pcie_ss_hdr_req_attr_upk attr;
 }
 t_pcie_ss_hdr_req_upk;
 

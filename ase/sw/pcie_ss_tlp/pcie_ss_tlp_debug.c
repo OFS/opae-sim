@@ -71,14 +71,14 @@ static void fprintf_pcie_ss_mem_req(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
     fprintf_pcie_ss_base(stream, hdr);
     if (hdr->dm_mode)
     {
-        fprintf(stream, " req_id 0x%04x tag 0x%02x addr 0x%016" PRIx64,
-                hdr->req_id, hdr->tag,
+        fprintf(stream, " req_id 0x%04x tag 0x%02x [AT %x] addr 0x%016" PRIx64,
+                hdr->req_id, hdr->tag, hdr->u.req.attr.at,
                 hdr->u.req.addr);
     }
     else
     {
-        fprintf(stream, " req_id 0x%04x tag 0x%02x lbe 0x%x fbe 0x%x addr 0x%016" PRIx64,
-                hdr->req_id, hdr->tag,
+        fprintf(stream, " req_id 0x%04x tag 0x%02x [AT %x] lbe 0x%x fbe 0x%x addr 0x%016" PRIx64,
+                hdr->req_id, hdr->tag, hdr->u.req.attr.at,
                 hdr->u.req.last_dw_be, hdr->u.req.first_dw_be,
                 hdr->u.req.addr);
     }

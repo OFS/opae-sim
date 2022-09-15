@@ -187,6 +187,12 @@ void pcie_ss_tlp_hdr_unpack(
                    (((dw0 >> 19) & 1) << 8) |    // tag_m
                    ((v >> 8) & 0xff);            // tag_l
 
+        hdr->u.req.attr.ln = (dw0 >> 17) & 1;
+        hdr->u.req.attr.th = (dw0 >> 16) & 1;
+        hdr->u.req.attr.td = (dw0 >> 15) & 1;
+        hdr->u.req.attr.ep = (dw0 >> 14) & 1;
+        hdr->u.req.attr.at = (dw0 >> 10) & 3;
+
         if (hdr->dm_mode)
         {
             hdr->len_bytes = (((v >> 18) & 0xfff) << 12) | // length_h

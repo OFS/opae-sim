@@ -75,7 +75,7 @@
 
  `define UMSG_DELAY_TIMER_LOG2         8
 
- `define SOFT_RESET_DURATION           16
+ `define SOFT_RESET_DURATION           64
  `define RESET_TIMEOUT_DURATION        1024
 
 /*
