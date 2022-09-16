@@ -434,7 +434,7 @@ static void pcie_tlp_a2h_mwr(
             ASE_ERR("AFU Tx TLP - DMA write last_be is 0 on a multiple DWORD write:\n");
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
-        if ((hdr.u.req.addr <= 0xffffffff) && tlp_func_is_addr64(hdr.fmt_type))
+        if (!hdr.dm_mode && (hdr.u.req.addr <= 0xffffffff) && tlp_func_is_addr64(hdr.fmt_type))
         {
             ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit writes when address fits in MWr32:\n");
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
@@ -589,7 +589,7 @@ static void pcie_tlp_a2h_mrd(
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
-    if ((hdr->u.req.addr <= 0xffffffff) && tlp_func_is_addr64(hdr->fmt_type))
+    if (!hdr->dm_mode && (hdr->u.req.addr <= 0xffffffff) && tlp_func_is_addr64(hdr->fmt_type))
     {
         ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit reads when address fits in MRd32:\n");
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
