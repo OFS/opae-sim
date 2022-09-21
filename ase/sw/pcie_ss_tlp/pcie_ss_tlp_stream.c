@@ -781,9 +781,9 @@ static void push_new_read_cpl(t_dma_read_cpl *read_cpl)
     // responses those responses must be ordered relative to each other.
 
     // Pick a random number of current responses to put after this new one
-    uint32_t r = pcie_tlp_rand() & 0xff;
+    uint32_t r = pcie_ss_param_cfg.ordered_completions ? 0 : (pcie_tlp_rand() & 0xff);
     int n_later_rsp;
-    // r == 0 is a special case, used when rate limiting is off
+    // r == 0 is a special case, used to force ordered completions
     if ((r >= 0x80) || (r == 0))
         n_later_rsp = 0;
     else if (r >= 0x20)
@@ -1087,8 +1087,9 @@ static bool pcie_tlp_h2a_mem(
         hdr.u.req.first_dw_be = 0xf;
         hdr.u.req.addr = mmio_pkt->addr;
 
-        // Force VF0 for now
-        hdr.vf_active = 1;
+        hdr.pf_num = pcie_ss_param_cfg.default_pf_num;
+        hdr.vf_num = pcie_ss_param_cfg.default_vf_num;
+        hdr.vf_active = pcie_ss_param_cfg.default_vf_active;
 
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
         sop = 1;
@@ -1217,6 +1218,9 @@ static bool pcie_tlp_h2a_cpld(
         pcie_ss_tlp_hdr_reset(&hdr);
         hdr.dm_mode = req_hdr->dm_mode;
         hdr.fmt_type = PCIE_FMTTYPE_CPLD;
+        hdr.pf_num = req_hdr->pf_num;
+        hdr.vf_num = req_hdr->vf_num;
+        hdr.vf_active = req_hdr->vf_active;
         hdr.len_bytes = dma_cpl->len_dw * 4;
         hdr.u.cpl.byte_count = dma_cpl->byte_count;
         hdr.u.cpl.fc = dma_cpl->is_last;

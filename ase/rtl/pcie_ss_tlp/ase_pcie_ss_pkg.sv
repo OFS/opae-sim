@@ -46,6 +46,13 @@ package ase_pcie_ss_pkg;
         int max_rd_req_bytes;               // Maximum size of a DMA read request
         int max_wr_payload_bytes;           // Maximum size of a DMA write request
         int request_completion_boundary;    // Minimum size of a read completion
+        int ordered_completions;            // Keep completions in order?
+
+        // ASE currently supports only one active function. Set the default function.
+        // This could be overridden by ASE configuration at run time.
+        int default_pf_num;
+        int default_vf_num;
+        int default_vf_active;
     } t_ase_pcie_ss_param_cfg;
 
 endpackage // ase_pcie_ss_pkg

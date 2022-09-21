@@ -46,7 +46,13 @@ module ase_pcie_ss_emulator
   #(
     // Minimum size and alignment of a read completion (RCB) in bytes
     parameter REQUEST_COMPLETION_BOUNDARY = 64,
-    parameter CHANNEL_PAYLOAD_BYTES = 32
+    parameter CHANNEL_PAYLOAD_BYTES = 32,
+
+    // ASE currently supports only one active fuction. This sets the
+    // default function.
+    parameter PF_NUM = 0,
+    parameter VF_NUM = 0,
+    parameter VF_ACTIVE = 1
     )
    (
     input  logic pClk,
@@ -86,6 +92,14 @@ module ase_pcie_ss_emulator
     localparam MAX_WR_PAYLOAD_BYTES = ofs_pcie_ss_cfg_pkg::MAX_WR_PAYLOAD_BYTES;
 
     localparam NUM_AFU_INTERRUPTS = ofs_fim_cfg_pkg::NUM_AFU_INTERRUPTS;
+
+    // Does the PCIe SS sort completions? This capability was added after
+    // the initial version so the test is protected by a macro.
+`ifdef OFS_PCIE_SS_PLAT_CFG_FLAG_CPL_REORDER
+    localparam CPL_REORDER_EN = ofs_pcie_ss_cfg_pkg::CPL_REORDER_EN;
+`else
+    localparam CPL_REORDER_EN = 0;
+`endif
 
     // Power and error state
     assign pck_cp2af_pwrState = 2'b0;
@@ -169,6 +183,10 @@ module ase_pcie_ss_emulator
     assign param_cfg.max_rd_req_bytes = MAX_RD_REQ_BYTES;
     assign param_cfg.max_wr_payload_bytes = MAX_WR_PAYLOAD_BYTES;
     assign param_cfg.request_completion_boundary = REQUEST_COMPLETION_BOUNDARY;
+    assign param_cfg.ordered_completions = CPL_REORDER_EN;
+    assign param_cfg.default_pf_num = PF_NUM;
+    assign param_cfg.default_vf_num = VF_NUM;
+    assign param_cfg.default_vf_active = VF_ACTIVE;
     initial pcie_ss_param_init(param_cfg);
 
     // Finish logger command
@@ -247,42 +265,6 @@ module ase_pcie_ss_emulator
         ase_listener(2);
     end
 
-
-`ifdef FOOBAR
-    // First transaction seen
-    always @(posedge clk) begin : first_txn_watcher
-        if (ase_reset) begin
-            first_transaction_seen <= 0;
-        end
-        else if ( ~first_transaction_seen && any_valid ) begin
-            first_transaction_seen <= 1;
-        end
-    end
-
-    // Inactivity watchdog counter
-    always @(posedge clk) begin : inact_ctr
-        if (cfg.ase_mode != ASE_MODE_TIMEOUT_SIMKILL) begin
-            inactivity_counter <= 0;
-        end
-        else begin
-        // Watchdog countdown
-            if (first_transaction_seen && any_valid) begin
-                inactivity_counter <= 0;
-            end
-            else if (first_transaction_seen && ~any_valid) begin
-                inactivity_counter <= inactivity_counter + 1;
-            end
-        end
-    end
-
-    // Inactivity management - killswitch
-    always @(posedge clk) begin : call_simkill_countdown
-        if ( (inactivity_counter > cfg.ase_timeout) && (cfg.ase_mode == ASE_MODE_TIMEOUT_SIMKILL) ) begin
-            $display("  [SIM]  Inactivity timeout reached !!\n");
-            start_simkill_countdown();
-        end
-    end
-`endif
 
     /*
      * Initialization procedure

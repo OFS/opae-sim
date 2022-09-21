@@ -43,6 +43,12 @@
 `ifndef _PLATFORM_VH_
  `define _PLATFORM_VH_
 
+   // Interface version. Increment this when ASE semantics change so that
+   // clients can check. Of course it won't enable forward-compatible compilation.
+   // It will, however, allow future ASE versions that do happen to compile
+   // to confirm that the available opae-sim is compatible.
+ `define ASE_MAJOR_VERSION 2
+
    /*
     * SIMKILL_ON_UNDEFINED: A switch to kill simulation if on a valid
     * signal, 'X' or 'Z' is not allowed, gracious closedown on same
