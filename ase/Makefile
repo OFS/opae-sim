@@ -44,6 +44,12 @@
 
 include ase_sources.mk
 
+# Interface version. Increment this when ASE semantics change so that
+# clients can check. Of course it won't enable forward-compatible compilation.
+# It will, however, allow future ASE versions that do happen to compile
+# to confirm that the available opae-sim is compatible.
+ASE_MAJOR_VERSION=2
+
 ifneq ($(wildcard rtl/ase_platform_config.mk),)
   # Load platform interface manager's configuration
   include rtl/ase_platform_config.mk
@@ -298,6 +304,7 @@ SNPS_VLOGAN_OPT+= -nc -V -full64 +v2k -sverilog +define+$(SIMULATOR)
 SNPS_VLOGAN_OPT+= +incdir+$(DUT_INCDIR)
 SNPS_VLOGAN_OPT+= +librescan -work $(WORK) -override_timescale=$(TIMESCALE)
 SNPS_VLOGAN_OPT+= +define+$(ASE_PLATFORM)
+SNPS_VLOGAN_OPT+= +define+ASE_MAJOR_VERSION=$(ASE_MAJOR_VERSION)
 SNPS_VLOGAN_OPT+= +lint=all,noVCDE,noNS,NCEID,CAWM,TFIPC,IPDP,PCWM
 ifeq ($(ASE_DISABLE_LOGGER), 1)
   SNPS_VLOGAN_OPT+= +define+ASE_DISABLE_LOGGER=1
@@ -337,6 +344,7 @@ MENT_VLOG_OPT+= -nologo +librescan -work $(WORK) +define+$(SIMULATOR)
 MENT_VLOG_OPT+= -dpiheader work/dpiheader.h +incdir+$(DUT_INCDIR)+$(WORK)
 MENT_VLOG_OPT+= -sv -timescale $(TIMESCALE) -l vlog.log
 MENT_VLOG_OPT+= +define+$(ASE_PLATFORM)
+MENT_VLOG_OPT+= +define+ASE_MAJOR_VERSION=$(ASE_MAJOR_VERSION)
 ifeq ($(GLS_SIM), 1)
   MENT_VLOG_OPT+= $(GLS_VERILOG_OPT)
 endif
