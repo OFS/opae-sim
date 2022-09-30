@@ -71,29 +71,10 @@ void api_guid_to_fpga(uint64_t guidh, uint64_t guidl, uint8_t *guid)
 	}
 }
 
-struct dev_list {
-	fpga_objtype objtype;
-	fpga_guid guid;
-	uint16_t segment;
-	uint8_t bus;
-	uint8_t device;
-	uint8_t function;
-	uint8_t socket_id;
-
-	uint32_t fpga_num_slots;
-	uint64_t fpga_bitstream_id;
-	fpga_version fpga_bbs_version;
-
-	fpga_accelerator_state accelerator_state;
-	uint32_t accelerator_num_mmios;
-	uint32_t accelerator_num_irqs;
-	struct dev_list *next;
-	struct dev_list *parent;
-	struct dev_list *fme;
-};
-
 STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *tok)
 {
+	fpga_token_header *thdr = &tok->hdr;
+
 	if (FIELD_VALID(filter, FPGA_PROPERTY_PARENT)) {
 		fpga_token_header *parent_hdr =
 			(fpga_token_header *)filter->parent;
@@ -102,38 +83,37 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 			return false; // Reject search based on NULL parent token
                 }
 
-                if (!fpga_is_parent_child(parent_hdr,
-                                          &tok->hdr)) {
+                if (!fpga_is_parent_child(parent_hdr, thdr)) {
                         return false;
                 }
         }
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_OBJTYPE)) {
-		if (filter->objtype != tok->hdr.objtype) {
+		if (filter->objtype != thdr->objtype) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_SEGMENT)) {
-		if (filter->segment != tok->hdr.segment) {
+		if (filter->segment != thdr->segment) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_BUS)) {
-		if (filter->bus != tok->hdr.bus) {
+		if (filter->bus != thdr->bus) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_DEVICE)) {
-		if (filter->device != tok->hdr.device) {
+		if (filter->device != thdr->device) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_FUNCTION)) {
-		if (filter->function != tok->hdr.function) {
+		if (filter->function != thdr->function) {
 			return false;
 		}
 	}
@@ -145,7 +125,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_GUID)) {
-		if (0 != memcmp(tok->hdr.guid, filter->guid, sizeof(fpga_guid))) {
+		if (0 != memcmp(thdr->guid, filter->guid, sizeof(fpga_guid))) {
 			//BEGIN_RED_FONTCOLOR;
 			//printf("  [APP]  Filter mismatch\n");
 			//END_RED_FONTCOLOR;
@@ -154,31 +134,31 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_OBJECTID)) {
-		if (filter->object_id != tok->hdr.object_id) {
+		if (filter->object_id != thdr->object_id) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_VENDORID)) {
-		if (filter->vendor_id != tok->hdr.vendor_id) {
+		if (filter->vendor_id != thdr->vendor_id) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_DEVICEID)) {
-		if (filter->device_id != tok->hdr.device_id) {
+		if (filter->device_id != thdr->device_id) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_SUB_VENDORID)) {
-		if (filter->subsystem_vendor_id != tok->hdr.subsystem_vendor_id) {
+		if (filter->subsystem_vendor_id != thdr->subsystem_vendor_id) {
 			return false;
 		}
 	}
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_SUB_DEVICEID)) {
-		if (filter->subsystem_device_id != tok->hdr.subsystem_device_id) {
+		if (filter->subsystem_device_id != thdr->subsystem_device_id) {
 			return false;
 		}
 	}
@@ -186,7 +166,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 	/* if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_ERRORS)) */
 
 	if (FIELD_VALID(filter, FPGA_PROPERTY_INTERFACE)) {
-		if (filter->interface != tok->hdr.interface) {
+		if (filter->interface != thdr->interface) {
 			return false;
 		}
 	}
@@ -195,7 +175,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 	    && (FPGA_DEVICE == filter->objtype)) {
 
 		if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_SLOTS)) {
-			if ((FPGA_DEVICE != tok->hdr.objtype)
+			if ((FPGA_DEVICE != thdr->objtype)
 			    || (ASE_NUM_SLOTS
 					!= filter->u.fpga.num_slots)) {
                                 return false;
@@ -203,7 +183,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 		}
 
 		if (FIELD_VALID(filter, FPGA_PROPERTY_BBSID)) {
-			if ((FPGA_DEVICE != tok->hdr.objtype)
+			if ((FPGA_DEVICE != thdr->objtype)
 			    || (ASE_BBSID
 					!= filter->u.fpga.bbs_id)) {
                                 return false;
@@ -211,7 +191,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 		}
 
 		if (FIELD_VALID(filter, FPGA_PROPERTY_BBSVERSION)) {
-			if ((FPGA_DEVICE != tok->hdr.objtype)
+			if ((FPGA_DEVICE != thdr->objtype)
 			    || (ASE_BBS_VERSION_MAJOR
 				!= filter->u.fpga.bbs_version.major)
 			    || (ASE_BBS_VERSION_MINOR
@@ -231,7 +211,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 			FPGA_ACCELERATOR_ASSIGNED;
 
 		if (FIELD_VALID(filter, FPGA_PROPERTY_ACCELERATOR_STATE)) {
-			if ((FPGA_ACCELERATOR != tok->hdr.objtype)
+			if ((FPGA_ACCELERATOR != thdr->objtype)
 			    || (state
 				!= filter->u.accelerator.state)) {
 				return false;
@@ -239,7 +219,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 		}
 
 		if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_MMIO)) {
-			if ((FPGA_ACCELERATOR != tok->hdr.objtype)
+			if ((FPGA_ACCELERATOR != thdr->objtype)
 			    || (ASE_NUM_MMIO
 				!= filter->u.accelerator.num_mmio)) {
 				return false;
@@ -247,7 +227,7 @@ STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *
 		}
 
 		if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_INTERRUPTS)) {
-			if ((FPGA_ACCELERATOR != tok->hdr.objtype)
+			if ((FPGA_ACCELERATOR != thdr->objtype)
 			    || (ASE_NUM_IRQ
 				!= filter->u.accelerator.num_interrupts)) {
 				return false;
