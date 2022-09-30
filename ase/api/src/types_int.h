@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2021, Intel Corporation
+// Copyright(c) 2017-2022, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -36,6 +36,11 @@
 #include <stdint.h>
 #include <opae/types_enum.h>
 
+#define ASE_BBSID 0x63000023b637277UL
+#define ASE_BBS_VERSION_MAJOR 6
+#define ASE_BBS_VERSION_MINOR 3
+#define ASE_BBS_VERSION_PATCH 0
+
 #define FPGA_BBS_VER_MAJOR(i) (((i) >> 56) & 0xf)
 #define FPGA_BBS_VER_MINOR(i) (((i) >> 52) & 0xf)
 #define FPGA_BBS_VER_PATCH(i) (((i) >> 48) & 0xf)
@@ -55,13 +60,21 @@
 
 // ASE token Magic (FPGATOKN)
 #define ASE_TOKEN_MAGIC    0x46504741544f4b40
-#define ASE_OBJID          0x0000000000a53a53
+#define ASE_PF0_FME_OBJID  0x0000000000a53a53
+#define ASE_PF0_PORT_OBJID 0x0000000000a54a54
+#define ASE_VF0_PORT_OBJID 0x0000000000a55a55
 #define ASE_NUM_SLOTS      1
 #define ASE_ID             0x0A5E
 #define ASE_BUS            1
 #define ASE_DEVICE         1
-#define ASE_FUNCTION       0
+#define ASE_PF0_FUNCTION   0
+#define ASE_VF0_FUNCTION   1
 #define ASE_SOCKET_ID      0
+#define ASE_NUM_MMIO       2
+#define ASE_NUM_IRQ        0
+
+#define ASE_PF0_SUBSYSTEM_DEVICE ASE_ID
+#define ASE_VF0_SUBSYSTEM_DEVICE 0x0A5F
 
 //Get file descriptor from event handle
 #define FILE_DESCRIPTOR(eh) (((struct _fpga_event_handle *)eh)->fd)

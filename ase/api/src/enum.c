@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2021, Intel Corporation
+// Copyright(c) 2017-2022, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -45,12 +45,6 @@ uint32_t session_exist_status = NOT_ESTABLISHED;
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
-#define ASE_FME_ID 0x3345678UL
-#define BBSID 0x63000023b637277UL
-#define FPGA_NUM_SLOTS 1
-#define BBS_VERSION_MAJOR 6
-#define BBS_VERSION_MINOR 3
-#define BBS_VERSION_PATCH 0
 
 extern ssize_t readlink(const char *, char *, size_t);
 fpga_result ase_fpgaCloneToken(fpga_token src,
@@ -98,63 +92,192 @@ struct dev_list {
 	struct dev_list *fme;
 };
 
-STATIC bool matches_filters(const fpga_properties *filter, uint32_t num_filter,
-		fpga_token *token, uint64_t *j)
+STATIC bool matches_filter(struct _fpga_properties *filter, struct _fpga_token *tok)
+{
+	if (FIELD_VALID(filter, FPGA_PROPERTY_PARENT)) {
+		fpga_token_header *parent_hdr =
+			(fpga_token_header *)filter->parent;
+
+		if (!parent_hdr) {
+			return false; // Reject search based on NULL parent token
+                }
+
+                if (!fpga_is_parent_child(parent_hdr,
+                                          &tok->hdr)) {
+                        return false;
+                }
+        }
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_OBJTYPE)) {
+		if (filter->objtype != tok->hdr.objtype) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_SEGMENT)) {
+		if (filter->segment != tok->hdr.segment) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_BUS)) {
+		if (filter->bus != tok->hdr.bus) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_DEVICE)) {
+		if (filter->device != tok->hdr.device) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_FUNCTION)) {
+		if (filter->function != tok->hdr.function) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_SOCKETID)) {
+		if (filter->socket_id != ASE_SOCKET_ID) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_GUID)) {
+		if (0 != memcmp(tok->hdr.guid, filter->guid, sizeof(fpga_guid))) {
+			//BEGIN_RED_FONTCOLOR;
+			//printf("  [APP]  Filter mismatch\n");
+			//END_RED_FONTCOLOR;
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_OBJECTID)) {
+		if (filter->object_id != tok->hdr.object_id) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_VENDORID)) {
+		if (filter->vendor_id != tok->hdr.vendor_id) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_DEVICEID)) {
+		if (filter->device_id != tok->hdr.device_id) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_SUB_VENDORID)) {
+		if (filter->subsystem_vendor_id != tok->hdr.subsystem_vendor_id) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_SUB_DEVICEID)) {
+		if (filter->subsystem_device_id != tok->hdr.subsystem_device_id) {
+			return false;
+		}
+	}
+
+	/* if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_ERRORS)) */
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_INTERFACE)) {
+		if (filter->interface != tok->hdr.interface) {
+			return false;
+		}
+	}
+
+	if (FIELD_VALID(filter, FPGA_PROPERTY_OBJTYPE)
+	    && (FPGA_DEVICE == filter->objtype)) {
+
+		if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_SLOTS)) {
+			if ((FPGA_DEVICE != tok->hdr.objtype)
+			    || (ASE_NUM_SLOTS
+					!= filter->u.fpga.num_slots)) {
+                                return false;
+			}
+		}
+
+		if (FIELD_VALID(filter, FPGA_PROPERTY_BBSID)) {
+			if ((FPGA_DEVICE != tok->hdr.objtype)
+			    || (ASE_BBSID
+					!= filter->u.fpga.bbs_id)) {
+                                return false;
+			}
+		}
+
+		if (FIELD_VALID(filter, FPGA_PROPERTY_BBSVERSION)) {
+			if ((FPGA_DEVICE != tok->hdr.objtype)
+			    || (ASE_BBS_VERSION_MAJOR
+				!= filter->u.fpga.bbs_version.major)
+			    || (ASE_BBS_VERSION_MINOR
+				!= filter->u.fpga.bbs_version.minor)
+			    || (ASE_BBS_VERSION_PATCH
+				!= filter->u.fpga.bbs_version.patch)) {
+				return false;
+			}
+		}
+
+	} else if (FIELD_VALID(filter, FPGA_PROPERTY_OBJTYPE)
+		   && (FPGA_ACCELERATOR == filter->objtype)) {
+
+		fpga_accelerator_state state =
+			(session_exist_status == NOT_ESTABLISHED) ?
+			FPGA_ACCELERATOR_UNASSIGNED :
+			FPGA_ACCELERATOR_ASSIGNED;
+
+		if (FIELD_VALID(filter, FPGA_PROPERTY_ACCELERATOR_STATE)) {
+			if ((FPGA_ACCELERATOR != tok->hdr.objtype)
+			    || (state
+				!= filter->u.accelerator.state)) {
+				return false;
+			}
+		}
+
+		if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_MMIO)) {
+			if ((FPGA_ACCELERATOR != tok->hdr.objtype)
+			    || (ASE_NUM_MMIO
+				!= filter->u.accelerator.num_mmio)) {
+				return false;
+			}
+		}
+
+		if (FIELD_VALID(filter, FPGA_PROPERTY_NUM_INTERRUPTS)) {
+			if ((FPGA_ACCELERATOR != tok->hdr.objtype)
+			    || (ASE_NUM_IRQ
+				!= filter->u.accelerator.num_interrupts)) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+STATIC bool matches_filters(const fpga_properties *filter,
+			    uint32_t num_filter,
+			    fpga_token token)
 {
 	uint32_t i;
-	if (filter == NULL)
-		return true;
-	struct _fpga_properties *_filter = (struct _fpga_properties *)*filter;
-	struct _fpga_token *_tok = (struct _fpga_token *)*token;
-	if (!num_filter)	// no filter == match everything
+	struct _fpga_properties *_filter;
+	struct _fpga_token *_tok;
+
+	if (!filter || !num_filter) // no filter == match everything
 		return true;
 
-	if (_filter->valid_fields == 0)
-		return true;
+	_tok = (struct _fpga_token *)token;
 
-	if (FIELD_VALID(_filter, FPGA_PROPERTY_DEVICE)) {
-		return true;
-
+	for (i = 0 ; i < num_filter ; ++i) {
+		_filter = (struct _fpga_properties *)filter[i];
+		if (matches_filter(_filter, _tok))
+			return true;
 	}
 
-	if (FIELD_VALID(_filter, FPGA_PROPERTY_FUNCTION)) {
-		return true;
-	}
-
-	for (i = 0; i < num_filter; ++i) {
-		if (FIELD_VALID(_filter, FPGA_PROPERTY_PARENT)) {
-			if (_filter->parent == NULL)
-				return false;
-
-			if (((struct _fpga_token *)_filter->parent)->hdr.objtype == FPGA_ACCELERATOR)
-				return false;
-			else
-				*j = 1;
-		}
-		if (FIELD_VALID(_filter, FPGA_PROPERTY_OBJECTID)) {
-			uint64_t objid;
-			fpga_result result;
-			result = objectid_for_ase(&objid);
-			if (result != FPGA_OK || _filter->object_id != objid) {
-				return false;
-			}
-		}
-		if (_filter->objtype != _tok->hdr.objtype)
-			return false;
-
-		if (FIELD_VALID(_filter, FPGA_PROPERTY_GUID)) {
-			if (0 != memcmp(_tok->hdr.guid, _filter->guid,
-					sizeof(fpga_guid))) {
-				BEGIN_RED_FONTCOLOR;
-				printf("  [APP]  Filter mismatch\n");
-				END_RED_FONTCOLOR;
-				return false;
-			}
-		}
-		_filter++;
-
-	}
-	return true;
+	return false;
 }
 
 
@@ -164,9 +287,7 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 	      uint32_t *num_matches)
 {
 	uint64_t i;
-	fpga_token ase_token[2];
-	aseToken[0].hdr.objtype = FPGA_DEVICE;
-	aseToken[1].hdr.objtype = FPGA_ACCELERATOR;
+	fpga_token ase_token[3];
 
 	if ((num_filters > 0) && (NULL == (filters))) {
 		return FPGA_INVALID_PARAM;
@@ -184,10 +305,10 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 		return FPGA_INVALID_PARAM;
 	}
 
-	uint64_t afuid_data[2];
-	fpga_guid readback_afuid;
-
 	if (session_exist_status == NOT_ESTABLISHED) {
+		uint64_t afuid_data[2];
+		fpga_guid readback_afuid;
+
 		session_init();
 		ase_memcpy(&aseToken[0].hdr.guid, FPGA_FME_GUID, sizeof(fpga_guid));
 
@@ -196,14 +317,18 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 		// Convert afuid_data to readback_afuid
 		// e.g.: readback{0x5037b187e5614ca2, 0xad5bd6c7816273c2} -> "5037B187-E561-4CA2-AD5B-D6C7816273C2"
 		api_guid_to_fpga(afuid_data[1], afuid_data[0], readback_afuid);
-		ase_memcpy(&aseToken[1].hdr.guid, readback_afuid, sizeof(fpga_guid));
+		// The VF contains the AFU.
+		ase_memcpy(&aseToken[2].hdr.guid, readback_afuid, sizeof(fpga_guid));
+
+		session_exist_status = ESTABLISHED;
 	}
 
-	for (i = 0; i < 2; i++)
+	for (i = 0; i < 3; i++)
 		ase_token[i] = &aseToken[i];
+
 	*num_matches = 0;
-	for (i = 0; i < 2; i++) {
-		if (matches_filters(filters, num_filters, &ase_token[i], &i)) {
+	for (i = 0; i < 3; i++) {
+		if (matches_filters(filters, num_filters, ase_token[i])) {
 			if (*num_matches < max_tokens)	{
 				if (FPGA_OK != ase_fpgaCloneToken(ase_token[i], &tokens[*num_matches]))
 					FPGA_MSG("Error cloning token");
@@ -211,8 +336,8 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 			++*num_matches;
 		}
 	}
-	return FPGA_OK;
 
+	return FPGA_OK;
 }
 
 fpga_result __FPGA_API__ ase_fpgaDestroyToken(fpga_token *token)
@@ -310,8 +435,8 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 {
 	struct _fpga_token *_token = (struct _fpga_token *) token;
 	struct _fpga_properties *_prop = (struct _fpga_properties *) prop;
-	fpga_result result;
 	struct _fpga_properties _iprop;
+	fpga_token_header *hdr;
 
 	if (token == NULL)
 		return FPGA_INVALID_PARAM;
@@ -321,75 +446,96 @@ ase_fpgaUpdateProperties(fpga_token token, fpga_properties prop)
 		return FPGA_INVALID_PARAM;
 	}
 
-	if (ASE_TOKEN_MAGIC != _token->hdr.magic)
+	hdr = &_token->hdr;
+	if (ASE_TOKEN_MAGIC != hdr->magic)
 		return FPGA_INVALID_PARAM;
+
 	//clear fpga_properties buffer
 	ase_memset(&_iprop, 0, sizeof(struct _fpga_properties));
 	_iprop.magic = FPGA_PROPERTY_MAGIC;
-	result = objectid_for_ase(&_iprop.object_id);
-	if (result == 0)
-		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_OBJECTID);
-	if (ASE_TOKEN_MAGIC == _token->hdr.magic) {
-		// The input token is either an FME or an AFU.
-		if (memcmp(_token->hdr.guid, FPGA_FME_GUID, sizeof(fpga_guid)) == 0) {
-			_iprop.objtype = FPGA_DEVICE;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_OBJTYPE);
-			_iprop.device_id = ASE_ID;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_DEVICEID);
-			//Assign FME guid
-			ase_memcpy(&_iprop.guid, FPGA_FME_GUID, sizeof(fpga_guid));
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_GUID);
-			_iprop.u.fpga.num_slots = ASE_NUM_SLOTS;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_NUM_SLOTS);
-			_iprop.u.fpga.bbs_id = ASE_ID;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BBSID);
-			_iprop.u.fpga.bbs_version.major = 0;
-			_iprop.u.fpga.bbs_version.minor = 0;
-			_iprop.u.fpga.bbs_version.patch = 0;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BBSVERSION);
-		} else {
-			ase_memcpy(&_iprop.guid, &aseToken[1].hdr.guid, sizeof(fpga_guid));
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_GUID);
-			_iprop.u.accelerator.state = FPGA_ACCELERATOR_ASSIGNED;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_ACCELERATOR_STATE);
-			_iprop.parent = (fpga_token) token_get_parent(_token);
-			if (_iprop.parent != NULL)
-				SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_PARENT);
-			_iprop.objtype = FPGA_ACCELERATOR;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_OBJTYPE);
-			_iprop.u.accelerator.num_mmio = 2;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_NUM_MMIO);
-			_iprop.u.accelerator.num_interrupts = 0;
-			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_NUM_INTERRUPTS);
 
+	if (hdr->objtype == FPGA_ACCELERATOR) {
+		fpga_accelerator_state state;
+
+		_iprop.parent = (fpga_token) token_get_parent(_token);
+		if (_iprop.parent != NULL)
+			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_PARENT);
+
+		if (hdr->interface == FPGA_IFC_SIM_VFIO) {
+			// Only the VF has an afu_id.
+			ase_memcpy(&_iprop.guid, &aseToken[2].hdr.guid, sizeof(fpga_guid));
+			SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_GUID);
 		}
+
+		state = (session_exist_status == NOT_ESTABLISHED) ?
+			FPGA_ACCELERATOR_UNASSIGNED :
+			FPGA_ACCELERATOR_ASSIGNED;
+
+		_iprop.u.accelerator.state = state;
+		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_ACCELERATOR_STATE);
+
+		_iprop.u.accelerator.num_mmio = ASE_NUM_MMIO;
+		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_NUM_MMIO);
+
+		_iprop.u.accelerator.num_interrupts = ASE_NUM_IRQ;
+		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_NUM_INTERRUPTS);
+
+	} else {
+
+		// Assign FME guid
+		ase_memcpy(&_iprop.guid, FPGA_FME_GUID, sizeof(fpga_guid));
+		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_GUID);
+
+		_iprop.u.fpga.num_slots = ASE_NUM_SLOTS;
+		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_NUM_SLOTS);
+
+		_iprop.u.fpga.bbs_id = ASE_BBSID;
+		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BBSID);
+
+		_iprop.u.fpga.bbs_version.major = ASE_BBS_VERSION_MAJOR;
+		_iprop.u.fpga.bbs_version.minor = ASE_BBS_VERSION_MINOR;
+		_iprop.u.fpga.bbs_version.patch = ASE_BBS_VERSION_PATCH;
+		SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BBSVERSION);
+
 	}
-	_iprop.vendor_id = 0x8086;
-	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_VENDORID);
 
-	_iprop.device_id = ASE_ID;
-	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_DEVICEID);
+	_iprop.objtype = hdr->objtype;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_OBJTYPE);
 
-	_iprop.subsystem_vendor_id = 0x8086;
-	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SUB_VENDORID);
+	_iprop.segment = hdr->segment;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SEGMENT);
 
-	_iprop.subsystem_device_id = ASE_ID;
-	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SUB_DEVICEID);
-
-	_iprop.bus = ASE_BUS;
+	_iprop.bus = hdr->bus;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_BUS);
 
-	_iprop.device = ASE_DEVICE;
+	_iprop.device = hdr->device;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_DEVICE);
 
-	_iprop.function = ASE_FUNCTION;
+	_iprop.function = hdr->function;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_FUNCTION);
 
 	_iprop.socket_id = ASE_SOCKET_ID;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SOCKETID);
 
-	_iprop.interface = FPGA_IFC_SIM;
+	_iprop.vendor_id = hdr->vendor_id;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_VENDORID);
+
+	_iprop.device_id = hdr->device_id;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_DEVICEID);
+
+	_iprop.object_id = hdr->object_id;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_OBJECTID);
+
+	// FPGA_PROPERTY_NUM_ERRORS
+
+	_iprop.interface = hdr->interface;
 	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_INTERFACE);
+
+	_iprop.subsystem_vendor_id = hdr->subsystem_vendor_id;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SUB_VENDORID);
+
+	_iprop.subsystem_device_id = hdr->subsystem_device_id;
+	SET_FIELD_VALID(&_iprop, FPGA_PROPERTY_SUB_DEVICEID);
 
 	*_prop = _iprop;
 	return FPGA_OK;
@@ -419,12 +565,5 @@ fpga_result __FPGA_API__ ase_fpgaCloneToken(fpga_token src,
 
 	ase_memcpy(_dst, _src, sizeof(struct _fpga_token));
 	*dst = _dst;
-	return FPGA_OK;
-}
-
-fpga_result objectid_for_ase(uint64_t *object_id)
-{
-	*object_id = ASE_OBJID;
-
 	return FPGA_OK;
 }
