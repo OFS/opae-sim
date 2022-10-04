@@ -73,7 +73,8 @@
 #define ASE_NUM_MMIO       2
 #define ASE_NUM_IRQ        0
 
-#define ASE_SUBSYSTEM_DEVICE ASE_ID
+#define ASE_PF0_SUBSYSTEM_DEVICE ASE_ID
+#define ASE_VF0_SUBSYSTEM_DEVICE 0x0A5F
 
 //Get file descriptor from event handle
 #define FILE_DESCRIPTOR(eh) (((struct _fpga_event_handle *)eh)->fd)

@@ -39,7 +39,7 @@ static struct _fpga_token aseToken[3] = {
 			.object_id = ASE_PF0_FME_OBJID,
 			.guid = { 0, },
 			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_SUBSYSTEM_DEVICE
+			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
 		},
 	},
 	{
@@ -56,14 +56,14 @@ static struct _fpga_token aseToken[3] = {
 			.object_id = ASE_PF0_PORT_OBJID,
 			.guid = { 0, },
 			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_SUBSYSTEM_DEVICE
+			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
 		},
 	},
 	{
 		{
 			.magic = ASE_TOKEN_MAGIC,
 			.vendor_id = 0x8086,
-			.device_id = ASE_ID + 1,
+			.device_id = ASE_ID,
 			.segment = 0,
 			.bus = ASE_BUS,
 			.device = ASE_DEVICE,
@@ -73,7 +73,7 @@ static struct _fpga_token aseToken[3] = {
 			.object_id = ASE_VF0_PORT_OBJID,
 			.guid = { 0, },
 			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_SUBSYSTEM_DEVICE
+			.subsystem_device_id = ASE_VF0_SUBSYSTEM_DEVICE
 		},
 	}
 };
