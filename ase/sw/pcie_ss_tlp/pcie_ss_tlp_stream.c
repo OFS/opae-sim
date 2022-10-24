@@ -210,7 +210,7 @@ typedef struct dma_read_cpl
     // Read response data
     uint32_t *read_rsp_data;
     // Length of this individual packet
-    uint16_t len_dw;
+    uint16_t len_bytes;
     // Offset to the DW of the data for this packet. Non-zero only when
     // the completion is broken into multiple packets.
     uint16_t start_dw;
@@ -442,7 +442,7 @@ static void pcie_tlp_a2h_mwr(
     }
 
     // How many DWORDs (uint32_t) are still expected?
-    uint32_t payload_dws = (hdr.len_bytes / 4) - next_dw_idx;
+    uint32_t payload_dws = (hdr.len_bytes + 3) / 4 - next_dw_idx;
     if (payload_dws > tdata_payload_num_dw)
     {
         // This is not the last flit in the packet.
@@ -735,11 +735,13 @@ static void pcie_complete_dma_writes()
 // Pick a random read completion length in order to simulate PCIe breaking
 // apart completions in read-completion-boundary-sized chunks or larger.
 //
-static inline uint32_t random_cpl_length(uint32_t len_dw_rem)
+static inline uint32_t random_cpl_length(uint32_t len_dw_rem, bool dm_encoded)
 {
     uint32_t length;
 
-    if (len_dw_rem > (pcie_ss_param_cfg.request_completion_boundary / 4))
+    // DM ordered completion mode always returns completions as one packet
+    if (! (pcie_ss_param_cfg.ordered_completions && dm_encoded) &&
+        (len_dw_rem > (pcie_ss_param_cfg.request_completion_boundary / 4)))
     {
         uint32_t max_chunks;
         uint32_t rand_num;
@@ -876,7 +878,8 @@ static void pcie_receive_dma_reads()
             //
 
             // Total DWORD length of the response
-            uint32_t len_dw_rem = req_hdr->len_bytes / 4;
+            uint32_t len_dw_rem = (req_hdr->len_bytes + 3) / 4;
+            uint32_t len_bytes_rem = req_hdr->len_bytes;
             // Total bytes of the response, accounting for masks
             uint32_t byte_count_rem =
                 pcie_cpl_byte_count(len_dw_rem,
@@ -894,12 +897,17 @@ static void pcie_receive_dma_reads()
 
                 // Pick a random length, between the request completion
                 // boundary and the total payload size.
-                uint32_t this_len_dw = random_cpl_length(len_dw_rem);
+                uint32_t this_len_dw = random_cpl_length(len_dw_rem, req_hdr->dm_mode);
 
                 bool is_first = (start_dw == 0);
                 bool is_last = (this_len_dw == len_dw_rem);
 
-                read_cpl->len_dw = this_len_dw;
+                read_cpl->len_bytes = this_len_dw * 4;
+                if (is_last)
+                {
+                    read_cpl->len_bytes = len_bytes_rem;
+                }
+
                 read_cpl->start_dw = start_dw;
                 // PCIe expects the total remaining byte count for this and all
                 // future packets for the original request as "byte_count".
@@ -916,6 +924,7 @@ static void pcie_receive_dma_reads()
                                         is_first ? req_hdr->u.req.first_dw_be : 0xf,
                                         is_last ? req_hdr->u.req.last_dw_be : 0xf);
                 len_dw_rem -= this_len_dw;
+                len_bytes_rem -= (this_len_dw * 4);
                 start_dw += this_len_dw;
 
                 // Check the algorithm -- is_last implies no remaining data.
@@ -1195,7 +1204,7 @@ static bool pcie_tlp_h2a_cpld(
         // Fill the channel or return whatever remains of the packet
         rsp_dw = dma_read_cpl_dw_rem;
         req_hdr = &dma_cpl->state->req_hdr;
-        start_dw = dma_cpl->start_dw + dma_cpl->len_dw - dma_read_cpl_dw_rem;
+        start_dw = dma_cpl->start_dw + (dma_cpl->len_bytes + 3) / 4 - dma_read_cpl_dw_rem;
         tdata_start_dw = 0;
 
         pcie_ss_tlp_payload_reset(tdata, tuser, tkeep);
@@ -1221,7 +1230,7 @@ static bool pcie_tlp_h2a_cpld(
         hdr.pf_num = req_hdr->pf_num;
         hdr.vf_num = req_hdr->vf_num;
         hdr.vf_active = req_hdr->vf_active;
-        hdr.len_bytes = dma_cpl->len_dw * 4;
+        hdr.len_bytes = dma_cpl->len_bytes;
         hdr.u.cpl.byte_count = dma_cpl->byte_count;
         hdr.u.cpl.fc = dma_cpl->is_last;
         hdr.tag = req_hdr->tag;
@@ -1243,10 +1252,10 @@ static bool pcie_tlp_h2a_cpld(
 
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
         sop = 1;
-        dma_read_cpl_dw_rem = dma_cpl->len_dw;
+        dma_read_cpl_dw_rem = (dma_cpl->len_bytes + 3) / 4;
 
         // Fill the channel or return whatever remains of the packet
-        rsp_dw = dma_cpl->len_dw;
+        rsp_dw = (dma_cpl->len_bytes + 3) / 4;
         start_dw = dma_cpl->start_dw;
         tdata_start_dw = pcie_ss_cfg.tlp_hdr_dwords;
     }
@@ -1268,7 +1277,15 @@ static bool pcie_tlp_h2a_cpld(
         for (int i = 0; i < rsp_dw; i += 1)
         {
             svPutPartselBit(tdata, rsp_data[start_dw + i], (i + tdata_start_dw) * 32, 32);
-            svPutPartselBit(tkeep, ~0, (i + tdata_start_dw) * 4, 4);
+
+            // Set the keep mask for this DW. If it's the last one and the
+            // length isn't a multiple of DWs, set only the appropriate bits.
+            uint32_t keep_mask = ~0;
+            if (*tlast && (i + 1 == rsp_dw) && (dma_cpl->len_bytes & 3))
+            {
+                keep_mask = (1 << (dma_cpl->len_bytes & 3)) - 1;
+            }
+            svPutPartselBit(tkeep, keep_mask, (i + tdata_start_dw) * 4, 4);
         }
 
         dma_read_cpl_dw_rem -= rsp_dw;
