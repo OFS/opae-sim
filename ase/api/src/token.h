@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2021, Intel Corporation
+// Copyright(c) 2017-2022, Intel Corporation
 //
 // Redistribution  and  use  in source  and  binary  forms,  with  or  without
 // modification, are permitted provided that the following conditions are met:
@@ -24,7 +24,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,  EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-static struct _fpga_token aseToken[2] = {
+static struct _fpga_token aseToken[3] = {
 	{
 		{
 			.magic = ASE_TOKEN_MAGIC,
@@ -33,13 +33,13 @@ static struct _fpga_token aseToken[2] = {
 			.segment = 0,
 			.bus = ASE_BUS,
 			.device = ASE_DEVICE,
-			.function = ASE_FUNCTION,
-			.interface = FPGA_IFC_SIM,
+			.function = ASE_PF0_FUNCTION,
+			.interface = FPGA_IFC_SIM_DFL,
 			.objtype = FPGA_DEVICE,
-			.object_id = ASE_OBJID,
+			.object_id = ASE_PF0_FME_OBJID,
 			.guid = { 0, },
 			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_ID
+			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
 		},
 	},
 	{
@@ -50,13 +50,30 @@ static struct _fpga_token aseToken[2] = {
 			.segment = 0,
 			.bus = ASE_BUS,
 			.device = ASE_DEVICE,
-			.function = ASE_FUNCTION,
-			.interface = FPGA_IFC_SIM,
+			.function = ASE_PF0_FUNCTION,
+			.interface = FPGA_IFC_SIM_DFL,
 			.objtype = FPGA_ACCELERATOR,
-			.object_id = ASE_OBJID,
+			.object_id = ASE_PF0_PORT_OBJID,
 			.guid = { 0, },
 			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_ID
-		}
+			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
+		},
+	},
+	{
+		{
+			.magic = ASE_TOKEN_MAGIC,
+			.vendor_id = 0x8086,
+			.device_id = ASE_ID,
+			.segment = 0,
+			.bus = ASE_BUS,
+			.device = ASE_DEVICE,
+			.function = ASE_VF0_FUNCTION,
+			.interface = FPGA_IFC_SIM_VFIO,
+			.objtype = FPGA_ACCELERATOR,
+			.object_id = ASE_VF0_PORT_OBJID,
+			.guid = { 0, },
+			.subsystem_vendor_id = 0x8086,
+			.subsystem_device_id = ASE_VF0_SUBSYSTEM_DEVICE
+		},
 	}
 };
