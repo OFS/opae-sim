@@ -229,8 +229,12 @@ module axis_pcie_tlp_emulator
         ase_listener(1);
     end
 
+    logic first_transaction_seen;
+    int inactivity_counter;
+    wire any_valid = pcie_tlp_if.afu_tx_st.tvalid ||
+                     pcie_tlp_if.afu_rx_st.tvalid ||
+                     pcie_tlp_if.afu_irq_rx_st.tvalid;
 
-`ifdef FOOBAR
     // First transaction seen
     always @(posedge clk) begin : first_txn_watcher
         if (ase_reset) begin
@@ -264,7 +268,6 @@ module axis_pcie_tlp_emulator
             start_simkill_countdown();
         end
     end
-`endif
 
     /*
      * Initialization procedure

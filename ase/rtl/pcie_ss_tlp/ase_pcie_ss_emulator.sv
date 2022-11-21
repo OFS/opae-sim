@@ -265,6 +265,44 @@ module ase_pcie_ss_emulator
         ase_listener(2);
     end
 
+    logic first_transaction_seen;
+    int inactivity_counter;
+    wire any_valid = pcie_tx_if.tvalid || pcie_rx_if.tvalid;
+
+    // First transaction seen
+    always @(posedge clk) begin : first_txn_watcher
+        if (ase_reset) begin
+            first_transaction_seen <= 0;
+        end
+        else if ( ~first_transaction_seen && any_valid ) begin
+            first_transaction_seen <= 1;
+        end
+    end
+
+    // Inactivity watchdog counter
+    always @(posedge clk) begin : inact_ctr
+        if (cfg.ase_mode != ASE_MODE_TIMEOUT_SIMKILL) begin
+            inactivity_counter <= 0;
+        end
+        else begin
+        // Watchdog countdown
+            if (first_transaction_seen && any_valid) begin
+                inactivity_counter <= 0;
+            end
+            else if (first_transaction_seen && ~any_valid) begin
+                inactivity_counter <= inactivity_counter + 1;
+            end
+        end
+    end
+
+    // Inactivity management - killswitch
+    always @(posedge clk) begin : call_simkill_countdown
+        if ( (inactivity_counter > cfg.ase_timeout) && (cfg.ase_mode == ASE_MODE_TIMEOUT_SIMKILL) ) begin
+            $display("  [SIM]  Inactivity timeout reached !!\n");
+            start_simkill_countdown();
+        end
+    end
+
 
     /*
      * Initialization procedure
