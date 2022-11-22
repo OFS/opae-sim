@@ -21,7 +21,7 @@ will receive transactions. All MMIO traffic will be directed to a single AFU por
 
 ## libase plugin
 libase is implemented as a plugin for libopae-c following the plugin model as
-described [here](http://github.com/OPAE/opae-sdk/pluginis/README.md)
+described [here](http://github.com/OFS/opae-sdk/blob/master/plugins/README.md)
 
 
 ## libopae-c-ase
