@@ -95,7 +95,7 @@ module ase_pcie_ss_emulator
 
     // Does the PCIe SS sort completions? This capability was added after
     // the initial version so the test is protected by a macro.
-`ifdef OFS_PCIE_SS_PLAT_CFG_FLAG_CPL_REORDER
+`ifdef OFS_PCIE_SS_CFG_FLAG_CPL_REORDER
     localparam CPL_REORDER_EN = ofs_pcie_ss_cfg_pkg::CPL_REORDER_EN;
 `else
     localparam CPL_REORDER_EN = 0;
