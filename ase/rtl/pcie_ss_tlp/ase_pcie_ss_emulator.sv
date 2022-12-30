@@ -184,6 +184,10 @@ module ase_pcie_ss_emulator
     assign param_cfg.max_wr_payload_bytes = MAX_WR_PAYLOAD_BYTES;
     assign param_cfg.request_completion_boundary = REQUEST_COMPLETION_BOUNDARY;
     assign param_cfg.ordered_completions = CPL_REORDER_EN;
+    // For now, we tie completion reordering and tag mapping together. Almost
+    // all FIMs have a tag mapper. When completions may be out of order it makes
+    // no sense to accept duplicate tags.
+    assign param_cfg.emulate_tag_mapper = CPL_REORDER_EN;
     assign param_cfg.default_pf_num = PF_NUM;
     assign param_cfg.default_vf_num = VF_NUM;
     assign param_cfg.default_vf_active = VF_ACTIVE;

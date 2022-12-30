@@ -198,6 +198,19 @@ typedef struct dma_read_state
 // allocates the vector.
 static t_dma_read_state *dma_read_state;
 
+// A free list of DMA read states is used when tag mapping emulation is
+// enabled. In this mode, the emulator here allows duplicate read request
+// tags. FIMs typically have a tag mapper, making it possible for AFUs
+// to pass duplicate tags -- especially when completion reordering is
+// also enabled. The OFS-provided shims that split large DM-encoded
+// requests into smaller chunks generates duplicate tags since it is
+// known the FIM will handle them.
+//
+// The free list starts here and uses start_cycle as the next pointer --
+// an index into dma_read_state[].
+static uint64_t dma_read_state_free_head;
+#define READ_STATE_NULL ~UINT64_C(0)
+
 // Read completion may be broken into multiple packets, depending on
 // the request completion boundary. A linked list of responses is generated,
 // where multiple entries in the list may point to the same t_dma_read_state.
@@ -602,6 +615,23 @@ static void pcie_tlp_a2h_mrd(
     }
 
     uint32_t tag = hdr->tag;
+    if (pcie_ss_param_cfg.emulate_tag_mapper)
+    {
+        // Emulate the FIM's tag mapper, changing the behavior here so that
+        // incoming read request tags do not have to be unique. Pick an unused
+        // read state buffer from the free list. The value of "tag" here is
+        // internal to the emulator and the original tag will be returned
+        // with completions.
+        if (dma_read_state_free_head == READ_STATE_NULL)
+        {
+            ASE_ERR("No available emulated mapped read tags:\n\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+        tag = dma_read_state_free_head;
+        // Free list next pointer is in start_cycle
+        dma_read_state_free_head = dma_read_state[tag].start_cycle;
+    }
+
     if (dma_read_state[tag].busy)
     {
         ASE_ERR("AFU Tx TLP - DMA read request tag already in use:\n");
@@ -1248,6 +1278,15 @@ static bool pcie_tlp_h2a_cpld(
         if (dma_cpl->is_last)
         {
             dma_cpl->state->busy = false;
+
+            // If managing read tags here (tag mapper emulation), put the read state
+            // buffer back on the free list.
+            if (pcie_ss_param_cfg.emulate_tag_mapper)
+            {
+                // Free list next pointer is stored in start_cycle
+                dma_cpl->state->start_cycle = dma_read_state_free_head;
+                dma_read_state_free_head = dma_cpl->state - dma_read_state;
+            }
         }
 
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
@@ -1359,11 +1398,21 @@ int pcie_ss_param_init(const t_ase_pcie_ss_param_cfg *params)
         dma_read_cpl_head = read_cpl_next;
     }
     dma_read_cpl_tail = NULL;
+    dma_read_cpl_dw_rem = 0;
+
     uint64_t dma_state_size = sizeof(t_dma_read_state) *
                               pcie_ss_param_cfg.max_outstanding_dma_rd_reqs;
     dma_read_state = ase_malloc(dma_state_size);
     memset(dma_read_state, 0, dma_state_size);
-    dma_read_cpl_dw_rem = 0;
+
+    // Build a linked list of all dma_read_state entries as a free list.
+    // It will be used only of emulate_tag_mapper is enabled.
+    for (int i = 0; i < pcie_ss_param_cfg.max_outstanding_dma_rd_reqs; i += 1)
+    {
+        dma_read_state[i].start_cycle = i + 1;
+    }
+    dma_read_state[pcie_ss_param_cfg.max_outstanding_dma_rd_reqs-1].start_cycle = READ_STATE_NULL;
+    dma_read_state_free_head = 0;
 
     return 0;
 }
@@ -1536,8 +1585,8 @@ int pcie_ss_stream_afu_to_host_tready(
 {
     cur_cycle = cycle;
 
-    // Random back-pressure
-    return ((pcie_tlp_rand() & 0xff) < 0xf0);
+    // Random back-pressure and available tags
+    return ((pcie_tlp_rand() & 0xff) < 0xf0) && (dma_read_state_free_head != READ_STATE_NULL);
 }
 
 

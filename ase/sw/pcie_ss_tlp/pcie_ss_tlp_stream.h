@@ -372,6 +372,7 @@ typedef struct {
     int max_wr_payload_bytes;           // Maximum size of a DMA write request
     int request_completion_boundary;    // Minimum size of a read completion
     int ordered_completions;            // Keep completions in order?
+    int emulate_tag_mapper;             // Accept duplicate DMA read request tags?
 
     // ASE currently supports only one active function. Set the default function.
     // This could be overridden by ASE configuration at run time.
