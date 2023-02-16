@@ -1269,9 +1269,15 @@ static bool pcie_tlp_h2a_cpld(
         {
             hdr.u.cpl.low_addr += pcie_cpl_lower_addr_byte_offset(req_hdr->u.req.first_dw_be);
         }
+
         if (hdr.dm_mode)
         {
             hdr.metadata = req_hdr->metadata;
+            // Low address in DM encoding is just the offset from the start
+            // address. There are different rules for high bits of low_addr
+            // when DM completion reordering is enabled, but ASE doesn't
+            // support DM read requests long enough for that to matter.
+            hdr.u.cpl.low_addr = dma_cpl->start_dw * 4;
         }
 
         // Last packet for the original request? If so, free the tag.
