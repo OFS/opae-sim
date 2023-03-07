@@ -704,6 +704,10 @@ void session_deinit(void)
 		// Um-mapping CSR region
 		ASE_MSG("Deallocating MMIO map\n");
 		if (mmio_exist_status == ESTABLISHED) {
+			// Waiting for pending MMIO requests to complete
+			while (count_mmio_tid_used() != 0) {
+				sleep(1);
+			}
 			cleanup_mmio();
 			mmio_exist_status = NOT_ESTABLISHED;
 
