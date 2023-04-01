@@ -256,6 +256,9 @@ endif
 ifdef PLATFORM_FPGA_FAMILY_AGILEX
   FPGA_FAMILY = agilex
 endif
+ifdef PLATFORM_FPGA_FAMILY_AGILEX7
+  FPGA_FAMILY = agilex7
+endif
 $(info FPGA_FAMILY=$(FPGA_FAMILY))
 $(info )
 
