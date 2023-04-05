@@ -43,8 +43,10 @@ package ase_pcie_ss_pkg;
         int num_afu_interrupts;
         int num_of_sop;                     // Maximum number of SOPs in one tdata
         int num_of_seg;                     // Maximum number of segments in one tdata
-        int max_rd_req_bytes;               // Maximum size of a DMA read request
-        int max_wr_payload_bytes;           // Maximum size of a DMA write request
+        int max_rd_req_bytes;               // Maximum size of a DMA read request (PU)
+        int max_wr_payload_bytes;           // Maximum size of a DMA write request (PU)
+        int max_dm_rd_req_bytes;            // Maximum size of a DMA read request (DM)
+        int max_dm_wr_payload_bytes;        // Maximum size of a DMA write request (DM)
         int request_completion_boundary;    // Minimum size of a read completion
         int ordered_completions;            // Keep completions in order?
         int emulate_tag_mapper;             // Accept duplicate DMA read request tags?

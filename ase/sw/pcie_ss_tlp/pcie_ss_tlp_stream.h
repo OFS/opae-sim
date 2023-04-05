@@ -368,8 +368,10 @@ typedef struct {
     int num_afu_interrupts;
     int num_of_sop;                     // Maximum number of SOPs in one tdata
     int num_of_seg;                     // Maximum number of segments in one tdata
-    int max_rd_req_bytes;               // Maximum size of a DMA read request
-    int max_wr_payload_bytes;           // Maximum size of a DMA write request
+    int max_rd_req_bytes;               // Maximum size of a DMA read request (PU)
+    int max_wr_payload_bytes;           // Maximum size of a DMA write request (PU)
+    int max_dm_rd_req_bytes;            // Maximum size of a DMA read request (DM)
+    int max_dm_wr_payload_bytes;        // Maximum size of a DMA write request (DM)
     int request_completion_boundary;    // Minimum size of a read completion
     int ordered_completions;            // Keep completions in order?
     int emulate_tag_mapper;             // Accept duplicate DMA read request tags?
@@ -388,6 +390,8 @@ extern t_ase_pcie_ss_param_cfg pcie_ss_param_cfg;
 typedef struct {
     uint32_t tlp_hdr_dwords;            // Number of DWORDS in a TLP header
     uint32_t tlp_tdata_dwords;          // Number of DWORDS in the tdata bus
+    uint32_t max_any_rd_req_bytes;      // Max of either PU or DM read request
+    uint32_t max_any_wr_payload_bytes;  // Max of either PU or DM write request
 } t_ase_pcie_ss_cfg;
 
 extern t_ase_pcie_ss_cfg pcie_ss_cfg;

@@ -404,8 +404,8 @@ static void pcie_tlp_a2h_mwr(
     {
         // Allocate a payload buffer. Initialization should have happened before
         // the first flit arrived, so the configuration state is known.
-        assert(pcie_ss_param_cfg.max_wr_payload_bytes);
-        payload = ase_malloc(pcie_ss_param_cfg.max_wr_payload_bytes);
+        assert(pcie_ss_cfg.max_any_wr_payload_bytes);
+        payload = ase_malloc(pcie_ss_cfg.max_any_wr_payload_bytes);
     }
 
     // First payload DWORD in tdata (after a possible header)
@@ -421,10 +421,16 @@ static void pcie_tlp_a2h_mwr(
         tdata_payload_dw_idx = pcie_ss_cfg.tlp_hdr_dwords;
         tdata_payload_num_dw -= pcie_ss_cfg.tlp_hdr_dwords;
 
-        if (hdr.len_bytes > pcie_ss_param_cfg.max_wr_payload_bytes)
+        if (!hdr.dm_mode && (hdr.len_bytes > pcie_ss_param_cfg.max_wr_payload_bytes))
         {
-            ASE_ERR("AFU Tx TLP - DMA write larger than max payload bytes (%d):\n",
+            ASE_ERR("AFU Tx TLP - PU DMA write larger than max payload bytes (%d):\n",
                     pcie_ss_param_cfg.max_wr_payload_bytes);
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
+        }
+        if (hdr.dm_mode && (hdr.len_bytes > pcie_ss_param_cfg.max_dm_wr_payload_bytes))
+        {
+            ASE_ERR("AFU Tx TLP - DM DMA write larger than max payload bytes (%d):\n",
+                    pcie_ss_param_cfg.max_dm_wr_payload_bytes);
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
         if (hdr.len_bytes == 0)
@@ -532,10 +538,16 @@ static void pcie_tlp_a2h_mrd(
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
-    if (hdr->len_bytes > pcie_ss_param_cfg.max_rd_req_bytes)
+    if (!hdr->dm_mode && (hdr->len_bytes > pcie_ss_param_cfg.max_rd_req_bytes))
     {
-        ASE_ERR("AFU Tx TLP - DMA read larger than max payload bytes (%d):\n",
+        ASE_ERR("AFU Tx TLP - PU DMA read larger than max payload bytes (%d):\n",
                 pcie_ss_param_cfg.max_rd_req_bytes);
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+    if (hdr->dm_mode && (hdr->len_bytes > pcie_ss_param_cfg.max_dm_rd_req_bytes))
+    {
+        ASE_ERR("AFU Tx TLP - DM DMA read larger than max payload bytes (%d):\n",
+                pcie_ss_param_cfg.max_dm_rd_req_bytes);
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
@@ -887,7 +899,7 @@ static void pcie_receive_dma_reads()
             }
 
             // Get the data, which was sent separately
-            uint32_t *read_rsp_data = ase_malloc(pcie_ss_param_cfg.max_rd_req_bytes);
+            uint32_t *read_rsp_data = ase_malloc(pcie_ss_cfg.max_any_rd_req_bytes);
             if (NULL == read_rsp_data) ASE_ERR("Out of memory");
             if (rd_rsp.data_bytes) {
                 while ((status = mqueue_recv(app2sim_membus_rd_rsp_rx, (char *)read_rsp_data, rd_rsp.data_bytes)) != ASE_MSG_PRESENT) {
@@ -1389,6 +1401,13 @@ int pcie_ss_param_init(const t_ase_pcie_ss_param_cfg *params)
 
     pcie_ss_cfg.tlp_hdr_dwords = 8;
     pcie_ss_cfg.tlp_tdata_dwords = pcie_ss_param_cfg.tdata_width_bits / 32;
+
+    pcie_ss_cfg.max_any_rd_req_bytes =
+        (pcie_ss_param_cfg.max_rd_req_bytes > pcie_ss_param_cfg.max_dm_rd_req_bytes) ?
+            pcie_ss_param_cfg.max_rd_req_bytes : pcie_ss_param_cfg.max_dm_rd_req_bytes;
+    pcie_ss_cfg.max_any_wr_payload_bytes =
+        (pcie_ss_param_cfg.max_wr_payload_bytes > pcie_ss_param_cfg.max_dm_wr_payload_bytes) ?
+            pcie_ss_param_cfg.max_wr_payload_bytes : pcie_ss_param_cfg.max_dm_wr_payload_bytes;
 
     free(mmio_read_state);
     uint64_t mmio_state_size = sizeof(t_mmio_read_state) *
