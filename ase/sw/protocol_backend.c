@@ -1422,6 +1422,14 @@ void start_simkill_countdown(void)
 	ASE_DBG("Caught a SIG\n");
 #endif
 
+	// In regression mode app side stucks in mqueue_recv during deinitialization
+	// Therefore, send a complete message to allow app to cleanly exit
+	if (cfg->ase_mode == ASE_MODE_REGRESSION) {
+		mqueue_send(sim2app_portctrl_rsp_tx,
+				completed_str_msg,
+				ASE_MQ_MSGSIZE);
+	}
+
 	// Close and unlink message queue
 	ASE_MSG("Closing message queue and unlinking...\n");
 
