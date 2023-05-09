@@ -298,7 +298,7 @@ endif
 #########################################################################
 ## VHDL compile
 SNPS_VHDLAN_OPT?=
-SNPS_VHDLAN_OPT+= -nc -verbose -full64
+SNPS_VHDLAN_OPT+= -nc -verbose -full64 -smart_order
 SNPS_VHDLAN_OPT+= -work $(WORK)
 
 ## Verilog compile

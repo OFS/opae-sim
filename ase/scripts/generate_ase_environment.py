@@ -220,36 +220,69 @@ def config_sources(fd, filelist):
             # doesn't support these.
             vlog_srcs.append(s)
         elif (s[0] == '-'):
-            # For now assume - is an include directive and used only for
-            # Verilog. Escape all but the first space, which likely
-            # follows a simulator command.
+            # Escape spaces except for the separator from commands
             spl = s.split(' ')
             if (len(spl) > 1):
                 s = spl[0] + ' ' + '\\ '.join(spl[1:])
-            vlog_srcs.append(s)
-            vlog_found = True
+
+            is_inc_vhdl = False
+            if (s[1].lower() == 'f'):
+                # Extract the filename being included and remove the
+                # extension.
+                inc_name = os.path.splitext(os.path.basename(s))[0].lower()
+
+                # If the include file ends with any VHDL extension, assume
+                # it should be loaded during VHDL simulation. (E.g. the
+                # line:
+                #   -F foo/bar_vhd.f
+                # is treated as VHDL.) All other patterns are treated as
+                # Verilog.
+                for ext in VHD_EXTENSIONS:
+                    if (inc_name.endswith(ext[1:])):
+                        is_inc_vhdl = True
+                        vhdl_srcs.append(s)
+                        vhdl_found = True
+                        break
+
+            # Treat everything not matching VHDL as Verilog
+            if not is_inc_vhdl:
+                vlog_srcs.append(s)
+                vlog_found = True
         else:
             # Convert extensions to lower case for comparison
             sl = s.lower()
             # Escape spaces in pathnames
             s = s.replace(' ', '\\ ')
 
-            # Verilog or SystemVerilog?
-            for ext in VLOG_EXTENSIONS:
-                if (sl.endswith(ext)):
-                    vlog_srcs.append(s)
-                    vlog_found = True
-                    break
-
-            # VHDL?
-            for ext in VHD_EXTENSIONS:
-                if (sl.endswith(ext)):
-                    vhdl_srcs.append(s)
-                    vhdl_found = True
-                    break
-
             if (sl.endswith('.json')):
                 json_srcs.append(s)
+            else:
+                vlog_srcs.append(s)
+                vlog_found = True
+
+    # Parse the file list a second time, looking for VHDL sources
+    try:
+        srcs = commands_list_getoutput(
+            "rtl_src_config --sim-vhdl --abs".split(" ") + [filelist])
+    except Exception:
+        errorExit("rtl_src_config --sim-vhdl {0}".format(filelist))
+
+    srcs = srcs.split('\n')
+    for s in srcs:
+        if (len(s) == 0):
+            None
+        elif (s[0] == '-'):
+            # Escape spaces except for the separator from commands
+            spl = s.split(' ')
+            if (len(spl) > 1):
+                s = spl[0] + ' ' + '\\ '.join(spl[1:])
+            vhdl_srcs.append(s)
+            vhdl_found = True
+        else:
+            # Escape spaces in pathnames
+            s = s.replace(' ', '\\ ')
+            vhdl_srcs.append(s)
+            vhdl_found = True
 
     qsys_sim_files = config_qsys_sources(filelist, vlog_srcs, vhdl_srcs)
 
