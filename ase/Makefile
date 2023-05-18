@@ -216,7 +216,11 @@ ifeq ($(SIMULATOR), VCS)
   CC_OPT+= -I $(VCS_HOME)/include/
 endif
 ifeq ($(SIMULATOR), QUESTA)
-  CC_OPT+= -I $(MTI_HOME)/include/
+  ifeq ($(shell [ -d $(MTI_HOME)/include/ ]; echo $$?), 0)
+    CC_OPT+= -I $(MTI_HOME)/include/
+  else
+    CC_OPT+= -I $(MTI_HOME)/../include/
+  endif
 endif
 
 ## Print information ##
