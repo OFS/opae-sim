@@ -154,6 +154,8 @@ ASESW_FILE_LIST = \
 	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_debug.c \
 	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_hdr.c \
 	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_stream.c \
+	$(ASE_SRCDIR)/sw/hssi/hssi_stream.c \
+
 
 ## ASE top level module
 ASE_TOP = ase_top
@@ -204,7 +206,7 @@ CC_OPT+= -g $(CC_INT_SIZE) -fPIC -D SIM_SIDE=1 -I $(ASE_SRCDIR)/sw -I $(ASE_SRCD
 CC_OPT+= -D SIMULATOR=$(SIMULATOR) -D $(ASE_PLATFORM)
 CC_OPT+= -Wall -Wformat -Wformat-security
 CC_OPT+= -O2 -D_FORTIFY_SOURCE=2
-CC_OPT+= -std=c99
+CC_OPT+= -std=gnu99
 ifeq ($(GCC_VERSION_GT_49),1)
   CC_OPT+= -fstack-protector-strong
   CC_OPT+= -z noexecstack -z relro -z now
@@ -236,7 +238,7 @@ $(info CC=$(CC))
 
 ## ASE Link options
 ASE_LD_SWITCHES?=
-ASE_LD_SWITCHES+= -lrt -lpthread
+ASE_LD_SWITCHES+= -lrt -lpthread -lpcap
 
 ## Library names
 ASE_SHOBJ_NAME = ase_libs

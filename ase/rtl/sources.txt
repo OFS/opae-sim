@@ -26,6 +26,10 @@ axis_pcie_tlp/axis_pcie_tlp_pkg.sv
 axis_pcie_tlp/axis_pcie_tlp_emulator.sv
 axis_pcie_tlp/axis_pcie_tlp_logger.sv
 
+hssi/ase_hssi_pkg.sv
+hssi/ase_hssi_emulator.sv
+hssi/ase_hssi_logger.sv
+
 ase_sim_local_mem.sv
 ase_sim_local_mem_avmm_bridge.v
 ase_top.sv
