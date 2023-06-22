@@ -224,6 +224,9 @@ ifeq ($(SIMULATOR), QUESTA)
     CC_OPT+= -I $(MTI_HOME)/../include/
   endif
 endif
+ifdef ASE_HSSI_EMUL_PCAP
+	CC_OPT+= -DASE_HSSI_EMUL_PCAP
+endif
 
 ## Print information ##
 $(info #################################################################)
@@ -238,7 +241,10 @@ $(info CC=$(CC))
 
 ## ASE Link options
 ASE_LD_SWITCHES?=
-ASE_LD_SWITCHES+= -lrt -lpthread -lpcap
+ASE_LD_SWITCHES+= -lrt -lpthread
+ifdef ASE_HSSI_EMUL_PCAP
+ASE_LD_SWITCHES+= -lpcap
+endif
 
 ## Library names
 ASE_SHOBJ_NAME = ase_libs
