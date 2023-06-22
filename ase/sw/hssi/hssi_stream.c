@@ -162,9 +162,9 @@ typedef struct hssi_chan_context_s
 {
 #ifdef ASE_HSSI_EMUL_PCAP
     // General PCAP handles
-    pcap_t *pcap_in = NULL;
-    pcap_t *pcap_out = NULL;
-    pcap_dumper_t *pcap_out_dump = NULL;
+    pcap_t *pcap_in;
+    pcap_t *pcap_out;
+    pcap_dumper_t *pcap_out_dump;
     char errbuf[PCAP_ERRBUF_SIZE];
     // Current packets
     unsigned rx_len;
