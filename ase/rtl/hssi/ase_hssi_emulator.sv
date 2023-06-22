@@ -32,16 +32,13 @@
 `include "platform_if.vh"
 
 //
-// Only import this module when PCIe subsystem (SS) TLP emulation is
+// Only import this module when HSSI emulation is
 // required since the data structures may not be defined unless the
 // platform supports it.
 //
-// PCIe SS is the standard OFS TLP encoding for all releases except
-// the initial early access version.
-//
-// TODO:
-//`ifdef OFS_PLAT_PARAM_HOST_CHAN_IS_NATIVE_AXIS_PCIE_TLP
-//`ifdef OFS_PLAT_PARAM_HOST_CHAN_GASKET_PCIE_SS
+`ifdef AFU_MAIN_API_USES_INCLUDE_HSSI
+`ifdef OFS_PLAT_PARAM_HSSI_IS_NATIVE_AXIS_WITH_FC
+
 
 module ase_hssi_emulator
   #(
@@ -249,3 +246,6 @@ module ase_hssi_emulator
     assign fc.rx_pfc = fc.tx_pfc;
 
 endmodule // ase_hssi_emulator
+
+`endif // OFS_PLAT_PARAM_HSSI_IS_NATIVE_AXIS_WITH_FC
+`endif // AFU_MAIN_API_USES_INCLUDE_HSSI
