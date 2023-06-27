@@ -68,7 +68,7 @@ fpga_result __FPGA_API__ ase_fpgaWriteMMIO32(fpga_handle handle,
 			FPGA_MSG("Misaligned MMIO access");
 			return FPGA_INVALID_PARAM;
 		} else {
-			if (offset > MMIO_AFU_OFFSET) {
+			if (offset > MMIO_AFU_LENGTH) {
 				FPGA_MSG("Offset out of bounds");
 				return FPGA_INVALID_PARAM;
 			}
@@ -103,7 +103,7 @@ fpga_result __FPGA_API__ ase_fpgaReadMMIO32(fpga_handle handle,
 			FPGA_MSG("Misaligned MMIO access");
 			return FPGA_INVALID_PARAM;
 		} else {
-			if (offset > MMIO_AFU_OFFSET) {
+			if (offset > MMIO_AFU_LENGTH) {
 				FPGA_MSG("offset out of bounds");
 				return FPGA_INVALID_PARAM;
 			}
@@ -138,7 +138,7 @@ fpga_result __FPGA_API__ ase_fpgaWriteMMIO64(fpga_handle handle,
 			FPGA_MSG("Misaligned MMIO access");
 			return FPGA_INVALID_PARAM;
 		} else {
-			if (offset > MMIO_AFU_OFFSET) {
+			if (offset > MMIO_AFU_LENGTH) {
 				FPGA_MSG("Offset out of bounds");
 				return FPGA_INVALID_PARAM;
 			}
@@ -171,7 +171,7 @@ fpga_result __FPGA_API__ ase_fpgaReadMMIO64(fpga_handle handle,
 			FPGA_MSG("Misaligned MMIO access");
 			return FPGA_INVALID_PARAM;
 		} else {
-			if (offset > MMIO_AFU_OFFSET) {
+			if (offset > MMIO_AFU_LENGTH) {
 				FPGA_MSG("Offset out of bounds");
 				return FPGA_INVALID_PARAM;
 			}
@@ -205,7 +205,7 @@ fpga_result __FPGA_API__ ase_fpgaWriteMMIO512(fpga_handle handle,
 			FPGA_MSG("Misaligned MMIO access");
 			return FPGA_INVALID_PARAM;
 		} else {
-			if (offset > MMIO_AFU_OFFSET) {
+			if (offset > MMIO_AFU_LENGTH) {
 				FPGA_MSG("Offset out of bounds");
 				return FPGA_INVALID_PARAM;
 			}
