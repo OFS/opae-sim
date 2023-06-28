@@ -104,8 +104,9 @@
 #define CCI_CHUNK_SIZE       (2*1024*1024)	// CCI 2 MB physical chunks
 
 //MMIO memory map size
-#define MMIO_LENGTH                (512*1024)	// 512 KB MMIO size
+#define MMIO_LENGTH                (1024*1024*1024)	// 1 GB MMIO size
 #define MMIO_AFU_OFFSET            (256*1024)
+#define MMIO_AFU_LENGTH            (MMIO_LENGTH-MMIO_AFU_OFFSET)
 
 // MMIO Tid width
 #define MMIO_TID_BITWIDTH          9
