@@ -468,11 +468,7 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
             ip_dirs_copy.append(d)
 
     # Now we are finally ready to run qsys-generate.
-    try:
-        cmd = [os.path.join(os.environ['QUARTUS_HOME'], 'sopc_builder',
-                            'bin', 'qsys-generate')]
-    except KeyError as k:
-        errorExit("Required environment variable {0} is undefined".format(k))
+    cmd = ['qsys-generate']
 
     # We use synthesis mode instead of simulation because the generated
     # simulation control isn't needed for ASE and because some Qsys

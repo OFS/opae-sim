@@ -28,19 +28,12 @@ cmake_minimum_required(VERSION 2.8.12)
 project("opae-c-ase-server-rtl")
 include(ase_variables_config)
 
-# Altera simulation libraries
-configure_file(${PROJECT_SOURCE_DIR}/sources_quartus_libs.txt
-  ${PROJECT_BINARY_DIR}/sources_quartus_libs.txt @ONLY)
-
 # ASE server Verilog code
 configure_file(${PROJECT_SOURCE_DIR}/sources_ase_server.txt
   ${PROJECT_BINARY_DIR}/sources_ase_server.txt)
 
 # Installation targets
 if(NOT ASE_POST_INSTALL)
-  install(FILES ${PROJECT_SOURCE_DIR}/sources_quartus_libs.txt
-    DESTINATION share/opae/ase/rtl
-    COMPONENT aseextra)
   install(FILES ${PROJECT_SOURCE_DIR}/sources_ase_server.txt
     DESTINATION share/opae/ase/rtl
     COMPONENT aseextra)
