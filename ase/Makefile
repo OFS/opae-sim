@@ -225,7 +225,7 @@ ifeq ($(SIMULATOR), QUESTA)
   endif
 endif
 ifdef ASE_HSSI_EMUL_PCAP
-	CC_OPT+= -DASE_HSSI_EMUL_PCAP
+	CC_OPT+= -DASE_HSSI_EMUL_PCAP=$(ASE_HSSI_EMUL_PCAP)
 endif
 
 ## Print information ##

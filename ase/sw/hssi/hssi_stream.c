@@ -38,12 +38,13 @@
 #include "hssi_stream.h"
 
 #define MAX_CHANNELS 16
+#define MAX_PACKET_SIZE 65535
 
 static FILE *logfile;
 
 t_ase_hssi_param_cfg hssi_param_cfg;
 
-static bool in_reset;
+static bool in_reset[MAX_CHANNELS];
 static uint64_t cur_cycle;
 
 
@@ -170,7 +171,7 @@ typedef struct hssi_chan_context_s
     unsigned rx_len;
     const u_char *rx_packet;
     unsigned tx_len;
-    u_char tx_packet[65535];
+    u_char tx_packet[MAX_PACKET_SIZE];
 #else // not ASE_HSSI_EMUL_PCAP
     // FIFOs with data
     // FIFOs are filled via TX and read by RX
@@ -202,17 +203,45 @@ void _reset(int chan)
     if(!getenv(pcaps_path_envvar))
         hssi_error_and_kill("Environment variable %s not set.\n", pcaps_path_envvar);
     sprintf(pcaps_path, "%s", getenv(pcaps_path_envvar));
-    // Open the pcaps
+    // Open the pcaps/interfaces
     char str_buff[2048];
+#if ASE_HSSI_EMUL_PCAP == 2
+
+    sprintf(str_buff, "%s%d", pcaps_path, chan);
+    chan_context[chan].pcap_in = pcap_create(str_buff, chan_context[chan].errbuf);
+    if (chan_context[chan].pcap_in != NULL) {
+        pcap_set_snaplen(chan_context[chan].pcap_in, MAX_PACKET_SIZE);
+        pcap_set_promisc(chan_context[chan].pcap_in, 1);
+        pcap_set_timeout(chan_context[chan].pcap_in, 1);
+        int r = pcap_activate(chan_context[chan].pcap_in);
+        if (r != 0) {
+            pcap_close(chan_context[chan].pcap_in);
+            chan_context[chan].pcap_in = NULL;
+        } else {
+            // Capture only outgoing packets (= the ones sent via the interface)
+            // This is needed so that we don't also capture packets that came from the
+            // veth pair (= the ones we sent there as TX packets)
+            pcap_setnonblock(chan_context[chan].pcap_in, 1, chan_context[chan].errbuf);
+            pcap_setdirection(chan_context[chan].pcap_in, PCAP_D_OUT);
+        }
+    }
+    sprintf(str_buff, "%s%d_peer", pcaps_path, chan);
+    chan_context[chan].pcap_out = pcap_open_live(str_buff, MAX_PACKET_SIZE, 1, 1, chan_context[chan].errbuf);
+    // If only one is defined we have a problem
+    // (both not existing is fine => ignore the interface)
+    if ((chan_context[chan].pcap_in == NULL) != (chan_context[chan].pcap_out == NULL))
+        hssi_error_and_kill("Virtual interface pair %s could not be opened.\n", str_buff);
+#else
     sprintf(str_buff, "%s/in%d.pcap", pcaps_path, chan);
     chan_context[chan].pcap_in = pcap_open_offline(str_buff, chan_context[chan].errbuf);
     sprintf(str_buff, "%s/out%d.pcap", pcaps_path, chan);
-    chan_context[chan].pcap_out = pcap_open_dead(DLT_EN10MB, 65535);
+    chan_context[chan].pcap_out = pcap_open_dead(DLT_EN10MB, MAX_PACKET_SIZE);
     if (chan_context[chan].pcap_out == NULL)
         hssi_error_and_kill("Failed to setup output PCAP - %s\n", str_buff);
     chan_context[chan].pcap_out_dump = pcap_dump_open(chan_context[chan].pcap_out, str_buff);
     if (chan_context[chan].pcap_out_dump == NULL)
         hssi_error_and_kill("Failed to open output PCAP - %s\n", str_buff);
+#endif
 }
 #else // not ASE_HSSI_EMUL_PCAP
 void _reset(int chan)
@@ -248,9 +277,11 @@ int set_next_rx(
     // No PCAP.in => nothing to send
     if (chan_context[chan].pcap_in == NULL)
         return 0;
+#if ASE_HSSI_EMUL_PCAP == 1
     // Wait before starting to send the PCAPs
     if (cur_cycle <= 100000)
         return 0;
+#endif
     
     // Try to read next packet if we don't have one
     struct pcap_pkthdr *header;
@@ -346,6 +377,12 @@ int get_next_tx(
     chan_context[chan].tx_len += len;
 
     if (tlast) {
+#if ASE_HSSI_EMUL_PCAP == 2
+        if (chan_context[chan].pcap_out != NULL) {
+            // Send the packet to interface
+            pcap_sendpacket(chan_context[chan].pcap_out, (const u_char*)(chan_context[chan].tx_packet), chan_context[chan].tx_len);
+        }
+#else
         struct pcap_pkthdr header_out;
         // Set PCAP header
         header_out.ts.tv_usec = cycle;
@@ -354,6 +391,7 @@ int get_next_tx(
         // Dump the packet into PCAP
         pcap_dump((u_char*)chan_context[chan].pcap_out_dump, &header_out, (const u_char*)(chan_context[chan].tx_packet));
         pcap_dump_flush(chan_context[chan].pcap_out_dump);
+#endif
         chan_context[chan].tx_len = 0;
     }
 
@@ -403,9 +441,11 @@ int hssi_param_init(const t_ase_hssi_param_cfg *params)
                                                        
 int hssi_reset(int chan)
 {
-    if (!in_reset)
+    if (!in_reset[chan])
     {
-        in_reset = true;
+        in_reset[chan] = true;
+    } else {
+        return 0;
     }
 
     _reset(chan);
@@ -427,7 +467,7 @@ int hssi_stream_host_to_afu(
 )
 {
     cur_cycle = cycle;
-    in_reset = false;
+    in_reset[chan] = false;
 
     set_next_rx(chan, tvalid, tlast, tdata, tuser, tkeep);
 
@@ -475,7 +515,6 @@ int hssi_stream_afu_to_host_tready(
     // Random back-pressure and available tags
     return ((hssi_rand() & 0xff) < 0xf0);
 }
-
 
 //
 // Open a log file. The SystemVerilog HSSI emulator and the C code share the
