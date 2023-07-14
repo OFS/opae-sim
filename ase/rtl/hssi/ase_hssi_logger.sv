@@ -32,7 +32,7 @@
 
 module ase_hssi_logger
   #(
-    parameter LOGNAME   = "CHANGE_MY_NAME.log"
+    parameter LOGNAME   = "log_ase_hssi_events.log"
     )
    (
     // Configure enable
@@ -80,6 +80,18 @@ module ase_hssi_logger
         hssi_open_logfile(LOGNAME);
 
         forever begin
+            // -------------------------------------------------- //
+            // Indicate Software controlled reset
+            // -------------------------------------------------- //
+            if (SoftReset_q != SoftReset) begin
+                $sformat(msg,
+                         "%d\tSoftReset toggled from %b to %b\n",
+                         $time,
+                         SoftReset_q,
+                         SoftReset);
+                print_and_post_log(msg);
+            end
+            
             // -------------------------------------------------- //
             // Buffer messages
             // -------------------------------------------------- //

@@ -139,7 +139,7 @@ module ase_hssi_emulator
     // hssi_logger instance
     ase_hssi_logger
       #(
-        .LOGNAME("log_ase_events.tsv")
+        .LOGNAME("log_hssi_events.tsv")
         )
       ase_hssi_logger
        (
@@ -212,7 +212,7 @@ module ase_hssi_emulator
     //
     // Main simulation control.
     //
-    always @(posedge data_rx.clk)
+    always_ff @(posedge data_rx.clk)
     begin
         if (!data_rx.rst_n)
         begin
