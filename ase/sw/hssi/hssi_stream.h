@@ -33,6 +33,13 @@
 
 #include "ase_common.h"
 
+#define MAX_CHANNELS 16
+
+#define hssi_error_and_kill(format, ...) { \
+    ASE_ERR(format, __VA_ARGS__); \
+    start_simkill_countdown(); \
+}
+
 // ========================================================================
 //
 //  DPI-C types shared with SystemVerilog

@@ -30,23 +30,14 @@
 
 #include <assert.h>
 
-#ifdef ASE_HSSI_EMUL_PCAP
-#include <pcap.h>
-#endif
-
-#include "ase_common.h"
 #include "hssi_stream.h"
-
-#define MAX_CHANNELS 16
-#define MAX_PACKET_SIZE 65535
+#include "hssi_plugin_api.h"
 
 static FILE *logfile;
 
-t_ase_hssi_param_cfg hssi_param_cfg;
-
 static bool in_reset[MAX_CHANNELS];
-static uint64_t cur_cycle;
 
+t_ase_hssi_param_cfg hssi_param_cfg;
 
 // ========================================================================
 //
@@ -71,11 +62,6 @@ static int32_t hssi_rand(void)
 
     next_rand = next_rand * 1103515245 + 12345;
     return ((uint32_t)(next_rand/65536) % 32768);
-}
-
-#define hssi_error_and_kill(format, ...) { \
-    ASE_ERR(format, __VA_ARGS__); \
-    start_simkill_countdown(); \
 }
 
 // ========================================================================
@@ -146,288 +132,6 @@ void fprintf_hssi_host_to_afu(
 
 // ========================================================================
 //
-//  Context and general functions
-//
-// ========================================================================
-
-#ifndef ASE_HSSI_EMUL_PCAP
-// Since RX HSSI ignores in ready we can always send data
-// => realistically we only need a FIFO of size 2
-#define LOOPBACK_FIFO_SIZE 4
-#endif // not ASE_HSSI_EMUL_PCAP
-
-//
-// Context for each chanel
-//
-typedef struct hssi_chan_context_s
-{
-#ifdef ASE_HSSI_EMUL_PCAP
-    // General PCAP handles
-    pcap_t *pcap_in;
-    pcap_t *pcap_out;
-    pcap_dumper_t *pcap_out_dump;
-    char errbuf[PCAP_ERRBUF_SIZE];
-    // Current packets
-    unsigned rx_len;
-    const u_char *rx_packet;
-    unsigned tx_len;
-    u_char tx_packet[MAX_PACKET_SIZE];
-#else // not ASE_HSSI_EMUL_PCAP
-    // FIFOs with data
-    // FIFOs are filled via TX and read by RX
-    int tlast_fifo[LOOPBACK_FIFO_SIZE];
-    char *tdata_fifo[LOOPBACK_FIFO_SIZE];
-    char *tuser_fifo[LOOPBACK_FIFO_SIZE];
-    char *tkeep_fifo[LOOPBACK_FIFO_SIZE];
-    int sptr, eptr;
-#endif // ASE_HSSI_EMUL_PCAP
-} hssi_chan_context_t;
-
-hssi_chan_context_t chan_context[MAX_CHANNELS];
-
-#ifdef ASE_HSSI_EMUL_PCAP
-void _reset(int chan)
-{
-    // Close and clear everything
-    if (chan_context[chan].pcap_in != NULL)
-        pcap_close(chan_context[chan].pcap_in);
-    if (chan_context[chan].pcap_out != NULL)
-        pcap_close(chan_context[chan].pcap_out);
-    if (chan_context[chan].pcap_out_dump != NULL)
-        pcap_dump_close(chan_context[chan].pcap_out_dump);
-    memset((char *)&chan_context[chan], 0, sizeof(chan_context[chan]));
-
-    // Get the PCAPs dir
-    char pcaps_path[2000];
-    char *pcaps_path_envvar = "ASE_HSSI_PCAPS_PATH";
-    if(!getenv(pcaps_path_envvar))
-        hssi_error_and_kill("Environment variable %s not set.\n", pcaps_path_envvar);
-    sprintf(pcaps_path, "%s", getenv(pcaps_path_envvar));
-    // Open the pcaps/interfaces
-    char str_buff[2048];
-#if ASE_HSSI_EMUL_PCAP == 2
-
-    sprintf(str_buff, "%s%d", pcaps_path, chan);
-    chan_context[chan].pcap_in = pcap_create(str_buff, chan_context[chan].errbuf);
-    if (chan_context[chan].pcap_in != NULL) {
-        pcap_set_snaplen(chan_context[chan].pcap_in, MAX_PACKET_SIZE);
-        pcap_set_promisc(chan_context[chan].pcap_in, 1);
-        pcap_set_timeout(chan_context[chan].pcap_in, 1);
-        int r = pcap_activate(chan_context[chan].pcap_in);
-        if (r != 0) {
-            pcap_close(chan_context[chan].pcap_in);
-            chan_context[chan].pcap_in = NULL;
-        } else {
-            // Capture only outgoing packets (= the ones sent via the interface)
-            // This is needed so that we don't also capture packets that came from the
-            // veth pair (= the ones we sent there as TX packets)
-            pcap_setnonblock(chan_context[chan].pcap_in, 1, chan_context[chan].errbuf);
-            pcap_setdirection(chan_context[chan].pcap_in, PCAP_D_OUT);
-        }
-    }
-    sprintf(str_buff, "%s%d_peer", pcaps_path, chan);
-    chan_context[chan].pcap_out = pcap_open_live(str_buff, MAX_PACKET_SIZE, 1, 1, chan_context[chan].errbuf);
-    // If only one is defined we have a problem
-    // (both not existing is fine => ignore the interface)
-    if ((chan_context[chan].pcap_in == NULL) != (chan_context[chan].pcap_out == NULL))
-        hssi_error_and_kill("Virtual interface pair %s could not be opened.\n", str_buff);
-#else
-    sprintf(str_buff, "%s/in%d.pcap", pcaps_path, chan);
-    chan_context[chan].pcap_in = pcap_open_offline(str_buff, chan_context[chan].errbuf);
-    sprintf(str_buff, "%s/out%d.pcap", pcaps_path, chan);
-    chan_context[chan].pcap_out = pcap_open_dead(DLT_EN10MB, MAX_PACKET_SIZE);
-    if (chan_context[chan].pcap_out == NULL)
-        hssi_error_and_kill("Failed to setup output PCAP - %s\n", str_buff);
-    chan_context[chan].pcap_out_dump = pcap_dump_open(chan_context[chan].pcap_out, str_buff);
-    if (chan_context[chan].pcap_out_dump == NULL)
-        hssi_error_and_kill("Failed to open output PCAP - %s\n", str_buff);
-#endif
-}
-#else // not ASE_HSSI_EMUL_PCAP
-void _reset(int chan)
-{
-    for (int i=0; i<LOOPBACK_FIFO_SIZE; i++) {
-        chan_context[chan].tlast_fifo[i] = 0;
-        chan_context[chan].tdata_fifo[i] = (char *)ase_malloc(hssi_param_cfg.tdata_width_bits/8);
-        chan_context[chan].tuser_fifo[i] = (char *)ase_malloc(hssi_param_cfg.tuser_width_bits/8);
-        chan_context[chan].tkeep_fifo[i] = (char *)ase_malloc(hssi_param_cfg.tdata_width_bits/(8*8));
-    }
-    chan_context[chan].sptr = 0;
-    chan_context[chan].eptr = 0;
-}
-#endif // ASE_HSSI_EMUL_PCAP
-
-// ========================================================================
-//
-//  RX side functions
-//
-// ========================================================================
-#ifdef ASE_HSSI_EMUL_PCAP
-int set_next_rx(
-    int chan,
-    int *tvalid,
-    int *tlast,
-    svBitVecVal *tdata,
-    svBitVecVal *tuser,
-    svBitVecVal *tkeep
-)
-{
-    *tvalid = 0;
-
-    // No PCAP.in => nothing to send
-    if (chan_context[chan].pcap_in == NULL)
-        return 0;
-#if ASE_HSSI_EMUL_PCAP == 1
-    // Wait before starting to send the PCAPs
-    if (cur_cycle <= 100000)
-        return 0;
-#endif
-    
-    // Try to read next packet if we don't have one
-    struct pcap_pkthdr *header;
-    if (chan_context[chan].rx_packet == NULL) {
-        if (pcap_next_ex(chan_context[chan].pcap_in, &header, &(chan_context[chan].rx_packet)) < 0)
-            chan_context[chan].rx_packet = NULL;
-        else
-            chan_context[chan].rx_len = header->len;
-    }
-
-    // If there are no packets do nothing
-    if (chan_context[chan].rx_packet == NULL)
-        return 0;
-
-    // At this point we will have some data
-    *tvalid = 1;
-    memset(tuser, 0, hssi_param_cfg.tuser_width_bits/8);
-    // Entire word
-    if (chan_context[chan].rx_len > hssi_param_cfg.tdata_width_bits/8) {
-        *tlast = 0;
-        memset(tkeep, ~0, hssi_param_cfg.tdata_width_bits/(8*8));
-        memcpy(tdata, chan_context[chan].rx_packet, hssi_param_cfg.tdata_width_bits/8);
-        chan_context[chan].rx_len -= hssi_param_cfg.tdata_width_bits/8;
-        chan_context[chan].rx_packet += hssi_param_cfg.tdata_width_bits/8;
-    // Last word
-    } else {
-        *tlast = 1;
-        memset(tkeep, 0, hssi_param_cfg.tdata_width_bits/(8*8));
-        memset(tkeep, ~0, chan_context[chan].rx_len/8);
-        if (chan_context[chan].rx_len % 8)
-            ((char *)tkeep)[chan_context[chan].rx_len/8] = ((char)1 << (chan_context[chan].rx_len % 8)) - 1;
-        memcpy(tdata, chan_context[chan].rx_packet, chan_context[chan].rx_len);
-        chan_context[chan].rx_len = 0;
-        chan_context[chan].rx_packet = NULL;
-    }
-
-    return 0;
-}
-#else // not ASE_HSSI_EMUL_PCAP
-int set_next_rx(
-    int chan,
-    int *tvalid,
-    int *tlast,
-    svBitVecVal *tdata,
-    svBitVecVal *tuser,
-    svBitVecVal *tkeep
-)
-{
-    *tvalid = 0;
-
-    // Get and update fifo start pointer
-    int i = chan_context[chan].sptr;
-    // Check empty
-    if (i == chan_context[chan].eptr)
-        return 0;
-    chan_context[chan].sptr = (chan_context[chan].sptr+1)%LOOPBACK_FIFO_SIZE;
-
-
-    // Get data from the FIFO
-    *tvalid = 1;
-    *tlast = chan_context[chan].tlast_fifo[i];
-    memcpy(tdata, chan_context[chan].tdata_fifo[i], hssi_param_cfg.tdata_width_bits/8);
-    memcpy(tkeep, chan_context[chan].tkeep_fifo[i], hssi_param_cfg.tdata_width_bits/(8*8));
-    memcpy(tuser, chan_context[chan].tuser_fifo[i], hssi_param_cfg.tuser_width_bits/8);
-
-    return 0;
-}
-#endif // ASE_HSSI_EMUL_PCAP
-
-// ========================================================================
-//
-//  TX side functions
-//
-// ========================================================================
-#ifdef ASE_HSSI_EMUL_PCAP
-int get_next_tx(
-    int cycle,
-    int chan,
-    int tvalid,
-    int tlast,
-    const svBitVecVal *tdata,
-    const svBitVecVal *tuser,
-    const svBitVecVal *tkeep
-)
-{
-    unsigned len = 0;
-    for (len = 0; len < hssi_param_cfg.tdata_width_bits/8; len++)
-        if (!svGetBitselBit(tkeep, len))
-            break;
-
-    memcpy(chan_context[chan].tx_packet+chan_context[chan].tx_len, tdata, len);
-
-    chan_context[chan].tx_len += len;
-
-    if (tlast) {
-#if ASE_HSSI_EMUL_PCAP == 2
-        if (chan_context[chan].pcap_out != NULL) {
-            // Send the packet to interface
-            pcap_sendpacket(chan_context[chan].pcap_out, (const u_char*)(chan_context[chan].tx_packet), chan_context[chan].tx_len);
-        }
-#else
-        struct pcap_pkthdr header_out;
-        // Set PCAP header
-        header_out.ts.tv_usec = cycle;
-        header_out.caplen = chan_context[chan].tx_len;
-        header_out.len = chan_context[chan].tx_len;
-        // Dump the packet into PCAP
-        pcap_dump((u_char*)chan_context[chan].pcap_out_dump, &header_out, (const u_char*)(chan_context[chan].tx_packet));
-        pcap_dump_flush(chan_context[chan].pcap_out_dump);
-#endif
-        chan_context[chan].tx_len = 0;
-    }
-
-    return 0;
-}
-#else // not ASE_HSSI_EMUL_PCAP
-int get_next_tx(
-    int cycle,
-    int chan,
-    int tvalid,
-    int tlast,
-    const svBitVecVal *tdata,
-    const svBitVecVal *tuser,
-    const svBitVecVal *tkeep
-)
-{
-    if (!tvalid)
-        return 0;
-    
-    // Get and update fifo endpointer
-    int i = chan_context[chan].eptr;
-    // FIFO will never be full!
-    chan_context[chan].eptr = (chan_context[chan].eptr+1)%LOOPBACK_FIFO_SIZE;
-
-    // Store data in the FIFO
-    chan_context[chan].tlast_fifo[i] = tlast;
-    memcpy(chan_context[chan].tdata_fifo[i], tdata, hssi_param_cfg.tdata_width_bits/8);
-    memcpy(chan_context[chan].tkeep_fifo[i], tkeep, hssi_param_cfg.tdata_width_bits/(8*8));
-    memcpy(chan_context[chan].tuser_fifo[i], tuser, hssi_param_cfg.tuser_width_bits/8);
-
-    return 0;
-}
-#endif // ASE_HSSI_EMUL_PCAP
-
-// ========================================================================
-//
 //  DPI-C methods that communicate with the SystemVerilog simulation
 //
 // ========================================================================
@@ -441,6 +145,9 @@ int hssi_param_init(const t_ase_hssi_param_cfg *params)
                                                        
 int hssi_reset(int chan)
 {
+    if (chan >= MAX_CHANNELS)
+        return 0;
+    
     if (!in_reset[chan])
     {
         in_reset[chan] = true;
@@ -448,7 +155,7 @@ int hssi_reset(int chan)
         return 0;
     }
 
-    _reset(chan);
+    hssi_plugin_reset(chan);
     return 0;
 }
                                                        
@@ -466,10 +173,13 @@ int hssi_stream_host_to_afu(
     svBitVecVal *tkeep
 )
 {
-    cur_cycle = cycle;
+    if (chan >= MAX_CHANNELS) {
+        *tvalid = 0;
+        return 0;
+    }
     in_reset[chan] = false;
 
-    set_next_rx(chan, tvalid, tlast, tdata, tuser, tkeep);
+    hssi_plugin_set_next_rx(cycle, chan, tvalid, tlast, tdata, tuser, tkeep);
 
     if (*tvalid)
         fprintf_hssi_host_to_afu(logfile, cycle, chan, *tlast, tdata, tuser, tkeep);
@@ -491,10 +201,12 @@ int hssi_stream_afu_to_host(
     const svBitVecVal *tkeep
 )
 {
+    if (chan >= MAX_CHANNELS)
+        return 0;
     if (!tvalid)
         return 0;
 
-    get_next_tx(cycle, chan, tvalid, tlast, tdata, tuser, tkeep);
+    hssi_plugin_get_next_tx(cycle, chan, tvalid, tlast, tdata, tuser, tkeep);
 
     fprintf_hssi_afu_to_host(logfile, cycle, chan, tlast, tdata, tuser, tkeep);
 
@@ -510,8 +222,6 @@ int hssi_stream_afu_to_host_tready(
     int chan
 )
 {
-    cur_cycle = cycle;
-
     // Random back-pressure and available tags
     return ((hssi_rand() & 0xff) < 0xf0);
 }
@@ -524,7 +234,7 @@ int hssi_open_logfile(
     const char *logname
 )
 {
-    logfile = fopen(logname, "a");
+    logfile = fopen(logname, "w");
     if (logfile == NULL)
     {
         fprintf(stderr, "Failed to open log file: %s\n", logname);

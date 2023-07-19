@@ -224,9 +224,6 @@ ifeq ($(SIMULATOR), QUESTA)
     CC_OPT+= -I $(MTI_HOME)/../include/
   endif
 endif
-ifdef ASE_HSSI_EMUL_PCAP
-	CC_OPT+= -DASE_HSSI_EMUL_PCAP=$(ASE_HSSI_EMUL_PCAP)
-endif
 
 ## Print information ##
 $(info #################################################################)
@@ -239,12 +236,15 @@ $(info )
 $(info SIMULATOR=$(SIMULATOR))
 $(info CC=$(CC))
 
+# Default HSSI plugin
+HSSI_DEFAULT_PLUGIN_SRC = $(ASE_SRCDIR)/sw/hssi/loopback_plugin.c
+HSSI_PLUGIN_LIB = hssi_plugin
+HSSI_PLUGIN_SO = lib$(HSSI_PLUGIN_LIB).so
+
+
 ## ASE Link options
 ASE_LD_SWITCHES?=
-ASE_LD_SWITCHES+= -lrt -lpthread
-ifdef ASE_HSSI_EMUL_PCAP
-ASE_LD_SWITCHES+= -lpcap
-endif
+ASE_LD_SWITCHES+= -lrt -lpthread -L. -l$(HSSI_PLUGIN_LIB)
 
 ## Library names
 ASE_SHOBJ_NAME = ase_libs
@@ -501,6 +501,11 @@ help: header
 
 ## Build ASE Software objects and shared library ##
 sw_build: $(SIM_QUARTUS_VERILOG) $(SIM_QUARTUS_VHDL)
+ifdef ASE_HSSI_PLUGIN_PATH
+	cd $(WORK) ; cp $(ASE_HSSI_PLUGIN_PATH) $(HSSI_PLUGIN_SO)
+else
+	cd $(WORK) ; $(CC) $(CC_OPT) -c $(HSSI_DEFAULT_PLUGIN_SRC) -shared -o $(HSSI_PLUGIN_SO)
+endif
 	cd $(WORK) ; $(CC) $(CC_OPT) -c $(ASESW_FILE_LIST) || exit 1
 	cd $(WORK) ; $(CC) $(CC_INT_SIZE) -g -shared -o $(ASE_SHOBJ_SO) `ls *.o` $(ASE_LD_SWITCHES)
 	nm $(WORK)/$(ASE_SHOBJ_SO) > $(WORK)/$(ASE_SHOBJ_NAME).nm
