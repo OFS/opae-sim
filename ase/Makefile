@@ -501,8 +501,9 @@ help: header
 
 ## Build ASE Software objects and shared library ##
 sw_build: $(SIM_QUARTUS_VERILOG) $(SIM_QUARTUS_VHDL)
+	cd $(WORK) ; rm $(HSSI_PLUGIN_SO)
 ifdef ASE_HSSI_PLUGIN_PATH
-	cd $(WORK) ; cp $(ASE_HSSI_PLUGIN_PATH) $(HSSI_PLUGIN_SO)
+	cd $(WORK) ; ln -s $(ASE_HSSI_PLUGIN_PATH) $(HSSI_PLUGIN_SO)
 else
 	cd $(WORK) ; $(CC) $(CC_OPT) -c $(HSSI_DEFAULT_PLUGIN_SRC) -shared -o $(HSSI_PLUGIN_SO)
 endif
