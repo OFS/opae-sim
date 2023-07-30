@@ -559,8 +559,10 @@ $(WORK)/synopsys_sim_quartus_verilog.setup: | $(WORK)
 ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool vcsmx -language verilog -gen_only -cmd_file quartus_vcs_verilog.sh; chmod a+x quartus_vcs_verilog.sh
+  ifndef ENABLE_HSSI_SIM
 	@# Skip HSSI files -- ASE does not emulate
 	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_vcs_verilog.sh
+  endif
 	@# Compile the libraries
 	cd $(WORK); ./quartus_vcs_verilog.sh
 	find $(WORK)/verilog_libs -mindepth 1 -maxdepth 1 -type d -printf '%f: %p\n' > $@
@@ -574,8 +576,10 @@ $(WORK)/quartus_msim_verilog_libs: | $(WORK)
 ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool modelsim -language verilog -gen_only -cmd_file quartus_msim_verilog.do
+  ifndef ENABLE_HSSI_SIM
 	@# Skip HSSI files -- ASE does not emulate
 	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_msim_verilog.do
+  endif
 	@# Compile the libraries
 	cd $(WORK); vsim -c -do quartus_msim_verilog.do
 	@# Generate an -L command to load these libraries in vsim
@@ -591,8 +595,10 @@ ifdef DUT_VHD_SRC_LIST
 	mkdir -p $(WORK)/vhdl_libs
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool vcsmx -language vhdl -gen_only -cmd_file quartus_vcs_vhdl.sh; chmod a+x quartus_vcs_vhdl.sh
+    ifndef ENABLE_HSSI_SIM
 	@# Skip HSSI files -- ASE does not emulate
 	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_vcs_vhdl.sh
+    endif
 	@# Compile the libraries
 	cd $(WORK); ./quartus_vcs_vhdl.sh
 	find $(WORK)/vhdl_libs -mindepth 1 -maxdepth 1 -type d -printf '%f: %p\n' > $@
@@ -610,8 +616,10 @@ ifdef DUT_VHD_SRC_LIST
   ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool modelsim -language vhdl -gen_only -cmd_file quartus_msim_vhdl.do
+    ifndef ENABLE_HSSI_SIM
 	@# Skip HSSI files -- ASE does not emulate
 	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_msim_vhdl.do
+    endif
 	@# Compile the libraries
 	cd $(WORK); vsim -c -do quartus_msim_vhdl.do
   else
