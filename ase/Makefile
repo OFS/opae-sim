@@ -496,6 +496,12 @@ help: header
 	@echo "#                     |   compliant and fast simulation of      #"
 	@echo "#                     |   app-specific logic is needed          #"
 	@echo "#                     |                                         #"
+	@echo "# ASE_HSSI_PLUGIN_PATH| By default loopback HSSI emulation is   #"
+	@echo "#                     |   used (if HSSI is enabled). Setting    #"
+	@echo "#                     |   this variable makes it so that        #"
+	@echo "#                     |   a ".so" plugin found at this path is  #"
+	@echo "#                     |   used instead.                         #"
+	@echo "#                     |                                         #"
 	@echo "#################################################################"
 
 ## Build ASE Software objects and shared library ##
