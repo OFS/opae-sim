@@ -319,6 +319,9 @@ SNPS_VLOGAN_OPT+= +incdir+$(DUT_INCDIR)
 SNPS_VLOGAN_OPT+= +librescan -work $(WORK) -override_timescale=$(TIMESCALE)
 SNPS_VLOGAN_OPT+= +define+$(ASE_PLATFORM)
 SNPS_VLOGAN_OPT+= +define+ASE_MAJOR_VERSION=$(ASE_MAJOR_VERSION)
+ifdef ENABLE_HSSI_SIM
+  SNPS_VLOGAN_OPT+= +define+ENABLE_HSSI_SIM=1
+endif
 SNPS_VLOGAN_OPT+= +lint=all,noVCDE,noNS,NCEID,CAWM,TFIPC,IPDP,PCWM
 ifeq ($(ASE_DISABLE_LOGGER), 1)
   SNPS_VLOGAN_OPT+= +define+ASE_DISABLE_LOGGER=1
@@ -359,6 +362,9 @@ MENT_VLOG_OPT+= -dpiheader work/dpiheader.h +incdir+$(DUT_INCDIR)+$(WORK)
 MENT_VLOG_OPT+= -sv -timescale $(TIMESCALE) -l vlog.log
 MENT_VLOG_OPT+= +define+$(ASE_PLATFORM)
 MENT_VLOG_OPT+= +define+ASE_MAJOR_VERSION=$(ASE_MAJOR_VERSION)
+ifdef ENABLE_HSSI_SIM
+  MENT_VLOG_OPT+= +define+ENABLE_HSSI_SIM=1
+endif
 ifeq ($(GLS_SIM), 1)
   MENT_VLOG_OPT+= $(GLS_VERILOG_OPT)
 endif

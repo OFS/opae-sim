@@ -70,21 +70,21 @@ static int32_t hssi_rand(void)
 //
 // ========================================================================
 
-// Print a full tdata payload if n_dwords is 0
-static void fprintf_hssi_bitvec(FILE *stream, const svBitVecVal *payload, int n_dwords)
+// Print a full tdata payload if n_bytes is 0
+static void fprintf_hssi_bitvec(FILE *stream, const svBitVecVal *payload, int n_bytes)
 {
-    if (n_dwords == 0)
+    if (n_bytes == 0)
     {
-        n_dwords = hssi_param_cfg.tdata_width_bits / 32;
+        n_bytes = hssi_param_cfg.tdata_width_bits / 8;
     }
 
     fprintf(stream, "0x");
-    for (int i = n_dwords - 1; i >= 0; i -= 1)
+    for (int i = n_bytes - 1; i >= 0; i -= 1)
     {
-        uint32_t dw;
-        svGetPartselBit(&dw, payload, i * 32, 32);
-        if ((i & 1) && (i != n_dwords - 1)) fprintf(stream, "_");
-        fprintf(stream, "%08x", dw);
+        svBitVecVal b;
+        svGetPartselBit(&b, payload, i * 8, 8);
+        if (((i & 7) == 7) && (i != n_bytes - 1)) fprintf(stream, "_");
+        fprintf(stream, "%02x", b);
     }
 }
 
@@ -98,12 +98,12 @@ void fprintf_hssi_afu_to_host(
     const svBitVecVal *tkeep
 )
 {
-    fprintf(stream, "HSSI TX chan[%d]: %lld (hssi clock cycles!) %s ", chan, cycle, (eop ? "eop" : "   "));
+    fprintf(stream, "HSSI TX chan[%d]: %lld (chan clock cycles) %s ", chan, cycle, (eop ? "eop" : "   "));
 
     fprintf(stream, " ");
     fprintf_hssi_bitvec(stream, tdata, 0);
     fprintf(stream, " tkeep ");
-    fprintf_hssi_bitvec(stream, tkeep, hssi_param_cfg.tdata_width_bits / (32 * 8));
+    fprintf_hssi_bitvec(stream, tkeep, hssi_param_cfg.tdata_width_bits / (8 * 8));
 
     fprintf(stream, "\n");
     fflush(stream);
@@ -119,12 +119,12 @@ void fprintf_hssi_host_to_afu(
     const svBitVecVal *tkeep
 )
 {
-    fprintf(stream, "HSSI RX chan[%d]: %lld (hssi clock cycles!) %s ", chan, cycle, (eop ? "eop" : "   "));
+    fprintf(stream, "HSSI RX chan[%d]: %lld (chan clock cycles) %s ", chan, cycle, (eop ? "eop" : "   "));
 
     fprintf(stream, " ");
     fprintf_hssi_bitvec(stream, tdata, 0);
     fprintf(stream, " tkeep ");
-    fprintf_hssi_bitvec(stream, tkeep, hssi_param_cfg.tdata_width_bits / (32 * 8));
+    fprintf_hssi_bitvec(stream, tkeep, hssi_param_cfg.tdata_width_bits / (8 * 8));
 
     fprintf(stream, "\n");
     fflush(stream);

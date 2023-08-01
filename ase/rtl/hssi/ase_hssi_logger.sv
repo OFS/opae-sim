@@ -32,11 +32,11 @@
 
 module ase_hssi_logger
   #(
-    parameter LOGNAME   = "log_ase_hssi_events.log"
+    parameter LOGNAME = "log_ase_hssi_events.tsv",
+    parameter CHANNEL_ID = 0
     )
    (
     // Configure enable
-    input logic finish_logger,
     input logic stdout_en,
     // Buffer message injection
     input logic log_timestamp_en,
@@ -66,7 +66,7 @@ module ase_hssi_logger
     function void print_and_post_log(string formatted_string);
         if (stdout_en)
           $display(formatted_string);
-        hssi_write_logfile(formatted_string);
+        hssi_write_logfile({ formatted_string, "\n" });
     endfunction // print_and_post_log
 
     /*
@@ -74,7 +74,7 @@ module ase_hssi_logger
      */
     initial begin : logger_proc
         // Display
-        $display("  [SIM]  HSSI Transaction Logger started");
+        $display("  [SIM]  HSSI chan[%0d] transaction logger started", CHANNEL_ID);
 
         // Open transactions.tsv file
         hssi_open_logfile(LOGNAME);
@@ -85,8 +85,9 @@ module ase_hssi_logger
             // -------------------------------------------------- //
             if (SoftReset_q != SoftReset) begin
                 $sformat(msg,
-                         "%d\tSoftReset toggled from %b to %b\n",
+                         "%d\tHSSI chan[%0d] SoftReset toggled from %b to %b",
                          $time,
+                         CHANNEL_ID,
                          SoftReset_q,
                          SoftReset);
                 print_and_post_log(msg);

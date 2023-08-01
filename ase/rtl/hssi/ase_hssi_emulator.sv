@@ -139,13 +139,13 @@ module ase_hssi_emulator
     // hssi_logger instance
     ase_hssi_logger
       #(
-        .LOGNAME("log_hssi_events.tsv")
+        .LOGNAME("log_ase_hssi_events.tsv"),
+        .CHANNEL_ID(CHANNEL_ID)
         )
       ase_hssi_logger
        (
         // Logger control
-        .finish_logger(finish_trigger),
-        .stdout_en(1),
+        .stdout_en(1'b1),
         // Buffer message injection
         .log_string_en(buffer_msg_en),
         .log_timestamp_en(buffer_msg_tstamp_en),
