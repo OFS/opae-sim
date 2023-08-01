@@ -243,7 +243,7 @@ HSSI_PLUGIN_SO = lib$(HSSI_PLUGIN_LIB).so
 
 ## ASE Link options
 ASE_LD_SWITCHES?=
-ASE_LD_SWITCHES+= -lrt -lpthread -L. -l$(HSSI_PLUGIN_LIB)
+ASE_LD_SWITCHES+= -lrt -lpthread -L$(ASE_WORKDIR) -l$(HSSI_PLUGIN_LIB)
 
 ## Library names
 ASE_SHOBJ_NAME = ase_libs
