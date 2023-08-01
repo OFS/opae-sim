@@ -184,8 +184,15 @@ void sv2c_config_dex(const char *str)
 
 		// Check if file exists
 		if (access(sv2c_config_filepath, F_OK) == 0) {
-			ASE_MSG("+CONFIG %s file found !\n",
-				sv2c_config_filepath);
+			if (is_directory(sv2c_config_filepath)) {
+				ASE_MSG
+					("** WARNING ** specified +CONFIG file was a directory, will revert to DEFAULTS\n");
+				ase_memset(sv2c_config_filepath, 0,
+						ASE_FILEPATH_LEN);
+			} else {
+				ASE_MSG("+CONFIG %s file found !\n",
+					sv2c_config_filepath);
+			}
 		} else {
 			ASE_ERR
 				("** WARNING ** +CONFIG file was not found, will revert to DEFAULTS\n");
@@ -214,8 +221,15 @@ void sv2c_script_dex(const char *str)
 
 		// Check for existance of file
 		if (access(sv2c_script_filepath, F_OK) == 0) {
-			ASE_MSG("+SCRIPT %s file found !\n",
-				sv2c_script_filepath);
+			if (is_directory(sv2c_script_filepath)) {
+				ASE_MSG
+					("** WARNING ** specified +SCRIPT file was a directory, will revert to DEFAULTS\n");
+				ase_memset(sv2c_script_filepath, 0,
+						ASE_FILEPATH_LEN);
+			} else {
+				ASE_MSG("+SCRIPT %s file found !\n",
+					sv2c_script_filepath);
+			}
 		} else {
 			ASE_MSG
 				("** WARNING ** +SCRIPT file was not found, will revert to DEFAULTS\n");
@@ -1382,6 +1396,7 @@ int ase_ready(void)
 				ASE_ERR("sv2c_script_filepath is too long");
 			}
 		} else {
+			ASE_INFO_2("Script specified by ASE_SCRIPT not found, will revert to ./ase_regress.sh\n");
 			ase_string_copy(app_run_cmd, "./ase_regress.sh &",
 					ASE_FILEPATH_LEN);
 		}
@@ -1718,7 +1733,7 @@ void ase_config_parse(char *filename)
 
 	} else {
 		// FILE does not exist
-		ASE_INFO_2("%s not found, using default values\n",
+		ASE_INFO_2("Config file %s not found, using default values\n",
 			   filename);
 	}
 

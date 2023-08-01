@@ -290,17 +290,17 @@ endif
 
 ifeq ($(ASE_DISCRETE_EMIF_MODEL), EMIF_MODEL_BASIC)
 ifeq ($(SIMULATOR), VCS)
-  GLS_VERILOG_OPT+= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/lib/verbosity_pkg.sv
-  GLS_VERILOG_OPT+= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/lib/avalon_mm_pkg.sv
-  GLS_VERILOG_OPT+= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/lib/avalon_utilities_pkg.sv
-  GLS_VERILOG_OPT+= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/altera_avalon_mm_slave_bfm/altera_avalon_mm_slave_bfm.sv
+  GLS_VERILOG_OPT+= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/lib/verbosity_pkg.sv
+  GLS_VERILOG_OPT+= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/lib/avalon_mm_pkg.sv
+  GLS_VERILOG_OPT+= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/lib/avalon_utilities_pkg.sv
+  GLS_VERILOG_OPT+= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/altera_avalon_mm_slave_bfm/altera_avalon_mm_slave_bfm.sv
 endif
 
 ifeq ($(SIMULATOR), QUESTA)
-  QSIM_MODEL_VLOG_OPT= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/lib/mentor/verbosity_pkg.sv
-  QSIM_MODEL_VLOG_OPT+= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/lib/mentor/avalon_mm_pkg.sv
-  QSIM_MODEL_VLOG_OPT+= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/lib/mentor/avalon_utilities_pkg.sv
-  QSIM_MODEL_VLOG_OPT+= $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/altera_avalon_mm_slave_bfm/altera_avalon_mm_slave_bfm.sv
+  QSIM_MODEL_VLOG_OPT= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/lib/mentor/verbosity_pkg.sv
+  QSIM_MODEL_VLOG_OPT+= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/lib/mentor/avalon_mm_pkg.sv
+  QSIM_MODEL_VLOG_OPT+= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/lib/mentor/avalon_utilities_pkg.sv
+  QSIM_MODEL_VLOG_OPT+= $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/altera_avalon_mm_slave_bfm/altera_avalon_mm_slave_bfm.sv
 endif
 endif
 
@@ -424,12 +424,12 @@ ifneq ($(SIMULATOR), VCS)
 endif
 # Check gate simulation libraries
 ifeq ($(GLS_SIM), 1)
-  ifndef QUARTUS_HOME
-	@echo "** ERROR **: env(QUARTUS_HOME) has not been set."
-	@echo "** ERROR **: GLS_SIM needs QUARTUS_HOME environment variable to be set."
+  ifndef QUARTUS_ROOTDIR
+	@echo "** ERROR **: env(QUARTUS_ROOTDIR) has not been set."
+	@echo "** ERROR **: GLS_SIM needs QUARTUS_ROOTDIR environment variable to be set."
     ifdef QUARTUS_ROOT
-	@echo "** ERROR **: env(QUARTUS_ROOT) is set up. Please set env(QUARTUS_HOME) to same location."
-	@echo "** ERROR **: This makefile references libraries based on env(QUARTUS_HOME)."
+	@echo "** ERROR **: env(QUARTUS_ROOT) is set up. Please set env(QUARTUS_ROOTDIR) to the same location."
+	@echo "** ERROR **: This makefile references libraries based on env(QUARTUS_ROOTDIR)."
     endif
   endif
 endif
@@ -572,6 +572,10 @@ $(WORK)/synopsys_sim_quartus_verilog.setup: | $(WORK)
 ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool vcsmx -language verilog -gen_only -cmd_file quartus_vcs_verilog.sh; chmod a+x quartus_vcs_verilog.sh
+  ifndef ENABLE_HSSI_SIM
+	@# Skip HSSI files -- ASE does not emulate
+	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_vcs_verilog.sh
+  endif
 	@# Compile the libraries
 	cd $(WORK); ./quartus_vcs_verilog.sh
 	find $(WORK)/verilog_libs -mindepth 1 -maxdepth 1 -type d -printf '%f: %p\n' > $@
@@ -585,6 +589,10 @@ $(WORK)/quartus_msim_verilog_libs: | $(WORK)
 ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool modelsim -language verilog -gen_only -cmd_file quartus_msim_verilog.do
+  ifndef ENABLE_HSSI_SIM
+	@# Skip HSSI files -- ASE does not emulate
+	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_msim_verilog.do
+  endif
 	@# Compile the libraries
 	cd $(WORK); vsim -c -do quartus_msim_verilog.do
 	@# Generate an -L command to load these libraries in vsim
@@ -600,6 +608,10 @@ ifdef DUT_VHD_SRC_LIST
 	mkdir -p $(WORK)/vhdl_libs
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool vcsmx -language vhdl -gen_only -cmd_file quartus_vcs_vhdl.sh; chmod a+x quartus_vcs_vhdl.sh
+    ifndef ENABLE_HSSI_SIM
+	@# Skip HSSI files -- ASE does not emulate
+	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_vcs_vhdl.sh
+    endif
 	@# Compile the libraries
 	cd $(WORK); ./quartus_vcs_vhdl.sh
 	find $(WORK)/vhdl_libs -mindepth 1 -maxdepth 1 -type d -printf '%f: %p\n' > $@
@@ -617,6 +629,10 @@ ifdef DUT_VHD_SRC_LIST
   ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
 	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool modelsim -language vhdl -gen_only -cmd_file quartus_msim_vhdl.do
+    ifndef ENABLE_HSSI_SIM
+	@# Skip HSSI files -- ASE does not emulate
+	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_msim_vhdl.do
+    endif
 	@# Compile the libraries
 	cd $(WORK); vsim -c -do quartus_msim_vhdl.do
   else
@@ -638,7 +654,7 @@ else
   ifeq ($(SIMULATOR), QUESTA)
         ifeq ($(ASE_DISCRETE_EMIF_MODEL), EMIF_MODEL_BASIC)
                 # recompile memory model to keep Questa happy
-		cd $(WORK) ; vlog $(MENT_VLOG_OPT) $(QUARTUS_HOME)/../ip/altera/sopc_builder_ip/verification/altera_avalon_mm_slave_bfm/altera_avalon_mm_slave_bfm.sv -l vlog-ase.log
+		cd $(WORK) ; vlog $(MENT_VLOG_OPT) $(QUARTUS_ROOTDIR)/../ip/altera/sopc_builder_ip/verification/altera_avalon_mm_slave_bfm/altera_avalon_mm_slave_bfm.sv -l vlog-ase.log
         endif
 	$(eval VERILOG_LIBS := $(shell cat $(WORK)/quartus_msim_verilog_libs))
 	cd $(ASE_WORKDIR) ; vsim $(MENT_VSIM_OPT) +CONFIG=$(ASE_CONFIG) +SCRIPT=$(ASE_SCRIPT) $(VERILOG_LIBS) $(ASE_TOP)

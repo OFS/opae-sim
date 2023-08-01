@@ -173,8 +173,16 @@ fi
 
 echo "-----------------------------------------------------------"
 ## Quartus version not available
-if [ "$QUARTUS_HOME" ] ; then
-    echo "  [INFO] env(QUARTUS_HOME) is set."
+if [ "$QUARTUS_ROOTDIR_OVERRIDE" ] ; then
+    echo "  [INFO] env(QUARTUS_ROOTDIR_OVERRIDE ) is set."
+    if [ -x "$(command -v quartus)" ] ; then
+	echo "  [INFO] $(type quartus)"
+    else
+	echo "  [WARN] quartus command not found !"
+	echo "  [WARN] Check Quartus settings !"
+    fi
+elif [ "$QUARTUS_ROOTDIR" ] ; then
+    echo "  [INFO] env(QUARTUS_ROOTDIR) is set."
     if [ -x "$(command -v quartus)" ] ; then
 	echo "  [INFO] $(type quartus)"
     else
