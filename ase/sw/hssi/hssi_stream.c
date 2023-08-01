@@ -78,13 +78,21 @@ static void fprintf_hssi_bitvec(FILE *stream, const svBitVecVal *payload, int n_
         n_bytes = hssi_param_cfg.tdata_width_bits / 8;
     }
 
-    fprintf(stream, "0x");
-    for (int i = n_bytes - 1; i >= 0; i -= 1)
+    int n_dwords = n_bytes / 4;
+    int width = 8;
+    if (n_dwords == 0)
     {
-        svBitVecVal b;
-        svGetPartselBit(&b, payload, i * 8, 8);
-        if (((i & 7) == 7) && (i != n_bytes - 1)) fprintf(stream, "_");
-        fprintf(stream, "%02x", b);
+        n_dwords = 1;
+        width = n_bytes * 2;
+    }
+
+    fprintf(stream, "0x");
+    for (int i = n_dwords - 1; i >= 0; i -= 1)
+    {
+        uint32_t dw;
+        svGetPartselBit(&dw, payload, i * 32, 32);
+        if ((i & 1) && (i != n_dwords - 1)) fprintf(stream, "_");
+        fprintf(stream, "%0*x", width, dw);
     }
 }
 
