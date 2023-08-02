@@ -1,0 +1,8 @@
+#!/bin/bash
+
+export ASE_WORKDIR=${PWD}
+
+LD_PRELOAD=libopae-c-ase.so ../../../../samples/hello_world/sw/hello_world
+LD_PRELOAD=libopae-c-ase.so ../../../../samples/hello_world/sw/hello_world
+LD_PRELOAD=libopae-c-ase.so ../../../../samples/hello_world/sw/hello_world
+LD_PRELOAD=libopae-c-ase.so ../../../../samples/hello_world/sw/hello_world
