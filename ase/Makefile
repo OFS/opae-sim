@@ -154,6 +154,8 @@ ASESW_FILE_LIST = \
 	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_debug.c \
 	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_hdr.c \
 	$(ASE_SRCDIR)/sw/pcie_ss_tlp/pcie_ss_tlp_stream.c \
+	$(ASE_SRCDIR)/sw/hssi/hssi_stream.c \
+
 
 ## ASE top level module
 ASE_TOP = ase_top
@@ -204,7 +206,6 @@ CC_OPT+= -g $(CC_INT_SIZE) -fPIC -D SIM_SIDE=1 -I $(ASE_SRCDIR)/sw -I $(ASE_SRCD
 CC_OPT+= -D SIMULATOR=$(SIMULATOR) -D $(ASE_PLATFORM)
 CC_OPT+= -Wall -Wformat -Wformat-security
 CC_OPT+= -O2 -D_FORTIFY_SOURCE=2
-CC_OPT+= -std=c99
 ifeq ($(GCC_VERSION_GT_49),1)
   CC_OPT+= -fstack-protector-strong
   CC_OPT+= -z noexecstack -z relro -z now
@@ -234,9 +235,15 @@ $(info )
 $(info SIMULATOR=$(SIMULATOR))
 $(info CC=$(CC))
 
+# Default HSSI plugin
+HSSI_DEFAULT_PLUGIN_SRC = $(ASE_SRCDIR)/sw/hssi/loopback_plugin.c
+HSSI_PLUGIN_LIB = hssi_plugin
+HSSI_PLUGIN_SO = lib$(HSSI_PLUGIN_LIB).so
+
+
 ## ASE Link options
 ASE_LD_SWITCHES?=
-ASE_LD_SWITCHES+= -lrt -lpthread
+ASE_LD_SWITCHES+= -lrt -lpthread -L$(ASE_WORKDIR) -l$(HSSI_PLUGIN_LIB)
 
 ## Library names
 ASE_SHOBJ_NAME = ase_libs
@@ -312,6 +319,9 @@ SNPS_VLOGAN_OPT+= +incdir+$(DUT_INCDIR)
 SNPS_VLOGAN_OPT+= +librescan -work $(WORK) -override_timescale=$(TIMESCALE)
 SNPS_VLOGAN_OPT+= +define+$(ASE_PLATFORM)
 SNPS_VLOGAN_OPT+= +define+ASE_MAJOR_VERSION=$(ASE_MAJOR_VERSION)
+ifdef ENABLE_HSSI_SIM
+  SNPS_VLOGAN_OPT+= +define+ENABLE_HSSI_SIM=1
+endif
 SNPS_VLOGAN_OPT+= +lint=all,noVCDE,noNS,NCEID,CAWM,TFIPC,IPDP,PCWM
 ifeq ($(ASE_DISABLE_LOGGER), 1)
   SNPS_VLOGAN_OPT+= +define+ASE_DISABLE_LOGGER=1
@@ -352,6 +362,9 @@ MENT_VLOG_OPT+= -dpiheader work/dpiheader.h +incdir+$(DUT_INCDIR)+$(WORK)
 MENT_VLOG_OPT+= -sv -timescale $(TIMESCALE) -l vlog.log
 MENT_VLOG_OPT+= +define+$(ASE_PLATFORM)
 MENT_VLOG_OPT+= +define+ASE_MAJOR_VERSION=$(ASE_MAJOR_VERSION)
+ifdef ENABLE_HSSI_SIM
+  MENT_VLOG_OPT+= +define+ENABLE_HSSI_SIM=1
+endif
 ifeq ($(GLS_SIM), 1)
   MENT_VLOG_OPT+= $(GLS_VERILOG_OPT)
 endif
@@ -489,10 +502,22 @@ help: header
 	@echo "#                     |   compliant and fast simulation of      #"
 	@echo "#                     |   app-specific logic is needed          #"
 	@echo "#                     |                                         #"
+	@echo "# ASE_HSSI_PLUGIN_PATH| By default loopback HSSI emulation is   #"
+	@echo "#                     |   used (if HSSI is enabled). Setting    #"
+	@echo "#                     |   this variable makes it so that        #"
+	@echo "#                     |   a ".so" plugin found at this path is  #"
+	@echo "#                     |   used instead.                         #"
+	@echo "#                     |                                         #"
 	@echo "#################################################################"
 
 ## Build ASE Software objects and shared library ##
 sw_build: $(SIM_QUARTUS_VERILOG) $(SIM_QUARTUS_VHDL)
+	cd $(WORK) ; rm -f $(HSSI_PLUGIN_SO)
+ifdef ASE_HSSI_PLUGIN_PATH
+	cd $(WORK) ; ln -s $(ASE_HSSI_PLUGIN_PATH) $(HSSI_PLUGIN_SO)
+else
+	cd $(WORK) ; $(CC) $(CC_OPT) -c $(HSSI_DEFAULT_PLUGIN_SRC) -shared -o $(HSSI_PLUGIN_SO)
+endif
 	cd $(WORK) ; $(CC) $(CC_OPT) -c $(ASESW_FILE_LIST) || exit 1
 	cd $(WORK) ; $(CC) $(CC_INT_SIZE) -g -shared -o $(ASE_SHOBJ_SO) `ls *.o` $(ASE_LD_SWITCHES)
 	nm $(WORK)/$(ASE_SHOBJ_SO) > $(WORK)/$(ASE_SHOBJ_NAME).nm
