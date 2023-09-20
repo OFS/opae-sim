@@ -512,11 +512,12 @@ fpga_result __FPGA_API__ ase_fpgaGetIOAddress(fpga_handle handle, uint64_t wsid,
 	fpga_result result = FPGA_OK;
 	int err;
 
+	if (!ioaddr)
+		return FPGA_INVALID_PARAM;
+
 	result = handle_check_and_lock(_handle);
 	if (result)
 		return result;
-	if (!ioaddr)
-		return FPGA_INVALID_PARAM;
 
 	wm = wsid_find(_handle->wsid_root, wsid);
 	if (!wm) {
@@ -531,4 +532,41 @@ fpga_result __FPGA_API__ ase_fpgaGetIOAddress(fpga_handle handle, uint64_t wsid,
 		FPGA_ERR("pthread_mutex_unlock() failed: %s", strerror(err));
 	}
 	return result;
+}
+
+/*
+ * A single PASID is associated with the process, independent of the number
+ * of FPGA ports connected or the open/close sequence.
+ */
+static int process_pasid;
+
+fpga_result __FPGA_API__ ase_fpgaBindSVA(fpga_handle handle, uint32_t *pasid)
+{
+	struct _fpga_handle *_handle = (struct _fpga_handle *)handle;
+	fpga_result result = FPGA_OK;
+	int err;
+
+	if (!pasid)
+		return FPGA_INVALID_PARAM;
+
+	result = handle_check_and_lock(_handle);
+	if (result)
+		return result;
+
+	/* Allocate a PASID if the process doesn't have one yet */
+	if (!process_pasid) {
+		/* PASID is 20 bits, non-zero */
+		process_pasid = rand() & 0xfffff;
+		if (!process_pasid)
+			process_pasid = 1;
+	}
+
+	*pasid = process_pasid;
+	_handle->pasid = process_pasid;
+
+	err = pthread_mutex_unlock(&_handle->lock);
+	if (err) {
+		FPGA_ERR("pthread_mutex_unlock() failed: %s", strerror(err));
+	}
+	return FPGA_OK;
 }

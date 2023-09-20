@@ -95,7 +95,8 @@ struct _fpga_handle {
 	void *umsg_virt;	    // umsg Virtual Memory pointer
 	uint64_t umsg_size;	    // umsg Virtual Memory Size
 	uint64_t *umsg_iova;	    // umsg IOVA from driver
-	bool fpgaMMIO_is_mapped;  // is MMIO mapped?
+	int pasid;
+	bool fpgaMMIO_is_mapped;    // is MMIO mapped?
 };
 
 /*

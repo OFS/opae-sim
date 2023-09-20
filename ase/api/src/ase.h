@@ -70,6 +70,7 @@ fpga_result ase_fpgaPrepareBuffer(fpga_handle handle, uint64_t len,
 fpga_result ase_fpgaReleaseBuffer(fpga_handle handle, uint64_t wsid);
 fpga_result ase_fpgaGetIOAddress(fpga_handle handle, uint64_t wsid,
 				   uint64_t *ioaddr);
+fpga_result ase_fpgaBindSVA(fpga_handle handle, uint32_t *pasid);
 fpga_result ase_fpgaGetOPAECVersion(fpga_version *version);
 fpga_result ase_fpgaGetOPAECVersionString(char *version_str, size_t len);
 fpga_result ase_fpgaGetOPAECBuildString(char *build_str, size_t len);
