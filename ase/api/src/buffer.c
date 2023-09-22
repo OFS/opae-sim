@@ -546,9 +546,6 @@ fpga_result __FPGA_API__ ase_fpgaBindSVA(fpga_handle handle, uint32_t *pasid)
 	fpga_result result = FPGA_OK;
 	int err;
 
-	if (!pasid)
-		return FPGA_INVALID_PARAM;
-
 	result = handle_check_and_lock(_handle);
 	if (result)
 		return result;
@@ -561,7 +558,8 @@ fpga_result __FPGA_API__ ase_fpgaBindSVA(fpga_handle handle, uint32_t *pasid)
 			process_pasid = 1;
 	}
 
-	*pasid = process_pasid;
+	if (pasid)
+		*pasid = process_pasid;
 	_handle->pasid = process_pasid;
 
 	err = pthread_mutex_unlock(&_handle->lock);
