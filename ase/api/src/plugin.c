@@ -103,6 +103,8 @@ int __FPGA_API__ opae_plugin_configure(opae_api_adapter_table *adapter,
 		dlsym(adapter->plugin.dl_handle, "ase_fpgaReleaseBuffer");
 	adapter->fpgaGetIOAddress =
 		dlsym(adapter->plugin.dl_handle, "ase_fpgaGetIOAddress");
+	adapter->fpgaBindSVA =
+		dlsym(adapter->plugin.dl_handle, "ase_fpgaBindSVA");
 	/*
 	**	adapter->fpgaGetOPAECVersion = dlsym(adapter->plugin.dl_handle,
 	*"ase_fpgaGetOPAECVersion");
