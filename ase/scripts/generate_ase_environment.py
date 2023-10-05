@@ -368,7 +368,7 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
     # Collect two sets: qsys source files and the names of directories into
     # which generated Verilog will be written.  The directory names match
     # the source names.
-    qsys_srcs = []
+    qsys_ip_srcs = []
     ip_dirs = []
     srcs = srcs.split('\n')
     for s in srcs:
@@ -376,9 +376,9 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
             # Record all build target directories
             ip_dirs.append(os.path.splitext(s)[0])
 
-            # Collect all qsys files
-            if (s.lower().endswith('.qsys')):
-                qsys_srcs.append(s)
+            # Collect all qsys,ip files
+            if (s.lower().endswith('.qsys') or s.lower().endswith('.ip')):
+                qsys_ip_srcs.append(s)
 
     tcl_srcs = []
     tsrcs = tsrcs.split('\n')
@@ -390,7 +390,7 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
                 tcl_srcs.append(s)
 
     # Any Qsys files found?
-    if (not qsys_srcs):
+    if (not qsys_ip_srcs):
         return dict()
 
     # First step: copy the trees holding Qsys, IP sources to a temporary tree
@@ -402,20 +402,18 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
     os.mkdir('qsys_sim')
     qsys_ip_srcs_copy = []
     tcl_srcs_copy = []
-    for q in srcs:
-        if(len(q) == 0):
-            continue
+    for q in qsys_ip_srcs:
         src_dir = os.path.dirname(q)
         base_filelist = os.path.dirname(filelist)
         paths = [src_dir, base_filelist]
         common_prefix = os.path.commonprefix(paths)
-        src_dir_base = os.path.basename(src_dir)
-        b = remove_prefix(src_dir, common_prefix)
-        b = b.strip("/")
-        tgt_dir = os.path.join('qsys_sim', b)
         # Has the source been copied already? Multiple Qsys files in the same
         # directory are copied together.
         if (src_dir not in copied_qsys_ip_dirs):
+            src_dir_base = os.path.basename(src_dir)
+            b = remove_prefix(src_dir, common_prefix)
+            b = b.strip("/")
+            tgt_dir = os.path.join('qsys_sim', b)
             copied_qsys_ip_dirs[src_dir] = tgt_dir
             print("Preparing {0}:".format(q))
             print("  Copying {0} to {1}...".format(src_dir, tgt_dir))
@@ -425,9 +423,8 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
                 errorExit("Failed to copy tree {0} to "
                           "{1}: Exception {2}".
                           format(src_dir, tgt_dir, e))
-
-        # Point to the copy
-        qsys_ip_srcs_copy.append(tgt_dir + q[len(src_dir):])
+            # Point to the copy
+            qsys_ip_srcs_copy.append(tgt_dir + q[len(src_dir):])
 
     for t in tcl_srcs:
         src_dir = os.path.dirname(t)
