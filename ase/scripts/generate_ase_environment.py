@@ -368,7 +368,7 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
     # Collect two sets: qsys source files and the names of directories into
     # which generated Verilog will be written.  The directory names match
     # the source names.
-    qsys_srcs = []
+    qsys_ip_srcs = []
     ip_dirs = []
     srcs = srcs.split('\n')
     for s in srcs:
@@ -376,9 +376,9 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
             # Record all build target directories
             ip_dirs.append(os.path.splitext(s)[0])
 
-            # Collect all qsys files
-            if (s.lower().endswith('.qsys')):
-                qsys_srcs.append(s)
+            # Collect all qsys,ip files
+            if (s.lower().endswith('.qsys') or s.lower().endswith('.ip')):
+                qsys_ip_srcs.append(s)
 
     tcl_srcs = []
     tsrcs = tsrcs.split('\n')
@@ -390,42 +390,41 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
                 tcl_srcs.append(s)
 
     # Any Qsys files found?
-    if (not qsys_srcs):
+    if (not qsys_ip_srcs):
         return dict()
 
-    # First step: copy the trees holding Qsys sources to a temporary tree
+    # First step: copy the trees holding Qsys, IP sources to a temporary tree
     # inside the simulator environment.  We do this to avoid polluting the
     # source tree with Qsys-generated files.
-    copied_qsys_dirs = dict()
+    copied_qsys_ip_dirs = dict()
     copied_tcl_dirs = dict()
     tgt_idx = 0
     os.mkdir('qsys_sim')
-    qsys_srcs_copy = []
+    qsys_ip_srcs_copy = []
     tcl_srcs_copy = []
-    for q in qsys_srcs:
+    for q in qsys_ip_srcs:
         src_dir = os.path.dirname(q)
         base_filelist = os.path.dirname(filelist)
         paths = [src_dir, base_filelist]
         common_prefix = os.path.commonprefix(paths)
         # Has the source been copied already? Multiple Qsys files in the same
         # directory are copied together.
-        if (src_dir not in copied_qsys_dirs):
+        if (src_dir not in copied_qsys_ip_dirs):
             src_dir_base = os.path.basename(src_dir)
             b = remove_prefix(src_dir, common_prefix)
             b = b.strip("/")
             tgt_dir = os.path.join('qsys_sim', b)
-            copied_qsys_dirs[src_dir] = tgt_dir
+            copied_qsys_ip_dirs[src_dir] = tgt_dir
             print("Preparing {0}:".format(q))
             print("  Copying {0} to {1}...".format(src_dir, tgt_dir))
             try:
-                shutil.copytree(src_dir, tgt_dir, symlinks=False, ignore=None)
+                shutil.copytree(src_dir, tgt_dir, symlinks=False, ignore=None, dirs_exist_ok=True)
             except Exception as e:
                 errorExit("Failed to copy tree {0} to "
                           "{1}: Exception {2}".
                           format(src_dir, tgt_dir, e))
-
-        # Point to the copy
-        qsys_srcs_copy.append(tgt_dir + q[len(src_dir):])
+            # Point to the copy
+            qsys_ip_srcs_copy.append(tgt_dir + q[len(src_dir):])
 
     for t in tcl_srcs:
         src_dir = os.path.dirname(t)
@@ -456,13 +455,13 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
     ip_dirs_copy = []
     for d in ip_dirs:
         match = None
-        for src in copied_qsys_dirs:
+        for src in copied_qsys_ip_dirs:
             if (src == d[:len(src)]):
                 match = src
                 break
         if match:
             # Replace the prefix (source tree) with the copied prefix
-            ip_dirs_copy.append(copied_qsys_dirs[match] + d[len(match):])
+            ip_dirs_copy.append(copied_qsys_ip_dirs[match] + d[len(match):])
         else:
             # Didn't find a match.  Use the original.
             ip_dirs_copy.append(d)
@@ -473,9 +472,9 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
     # We use synthesis mode instead of simulation because the generated
     # simulation control isn't needed for ASE and because some Qsys
     # projects are set up only for synthesis.
-    cmd.append('--synthesis=VERILOG')
+    cmd.append('--simulation=VERILOG')
 
-    for q in qsys_srcs_copy:
+    for q in qsys_ip_srcs_copy:
         cmd.append(q)
         print("\nBuilding " + q)
         try:
@@ -505,7 +504,7 @@ def config_qsys_sources(filelist, vlog_srcs, vhdl_srcs):
         for d in ip_dirs_copy:
             for dir, subdirs, files in os.walk(d):
                 for fn in sorted(files, key=sort_key_qsys_files):
-                    if ((os.path.basename(dir) == 'synth') and
+                    if ((os.path.basename(dir) == 'sim') and
                             (fn.endswith('.v') or fn.endswith('.sv') or
                              fn.endswith('.vhd') or fn.endswith('.hex'))):
                         full_path = os.path.join(dir, fn)
