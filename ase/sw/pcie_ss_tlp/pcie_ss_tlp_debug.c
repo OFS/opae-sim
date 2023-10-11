@@ -58,12 +58,24 @@ const char* pcie_ss_func_fmttype_to_string(uint8_t fmttype)
     return t;
 }
 
+static void fprintf_pcie_ss_prefix(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
+{
+    if (!hdr->pref_present)
+        return;
+
+    if (hdr->pref_type == 0b10001)
+        fprintf(stream, " [pasid 0x%x]", hdr->pref);
+    else
+        fprintf(stream, " [prefix type 0x%x value 0x%x]", hdr->pref_type, hdr->pref);
+}
+
 static void fprintf_pcie_ss_base(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
     fprintf(stream, "%s %s len_bytes 0x%04x",
             pcie_ss_func_fmttype_to_string(hdr->fmt_type),
             (hdr->dm_mode ? "DM" : "PU"),
             hdr->len_bytes);
+    fprintf_pcie_ss_prefix(stream, hdr);
 }
 
 static void fprintf_pcie_ss_mem_req(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
