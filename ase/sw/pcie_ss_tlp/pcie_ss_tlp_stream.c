@@ -458,6 +458,17 @@ static void pcie_tlp_a2h_mwr(
             ASE_ERR("AFU Tx TLP - PCIe does not allow 64 bit writes when address fits in MWr32:\n");
             pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
+
+        if (hdr.u.req.attr.at == 1)
+        {
+            ASE_ERR("AFU Tx TLP - ATS request not allowed on writes:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
+        }
+        if (hdr.u.req.attr.at > 2)
+        {
+            ASE_ERR("AFU Tx TLP - Illegal address type:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
+        }
     }
 
     // How many DWORDs (uint32_t) are still expected?
@@ -498,6 +509,7 @@ static void pcie_tlp_a2h_mwr(
         wr_req.req = HOST_MEM_REQ_WRITE;
         wr_req.data_bytes = hdr.len_bytes;
         wr_req.addr = hdr.u.req.addr;
+        wr_req.addr_type = hdr.u.req.attr.at;
         if ((hdr.u.req.first_dw_be != 0xf) || ((hdr.len_bytes > 4) && (hdr.u.req.last_dw_be != 0xf)))
         {
             wr_req.byte_en = 1;
@@ -509,6 +521,11 @@ static void pcie_tlp_a2h_mwr(
             wr_req.byte_en = 0;
             wr_req.first_be = 0;
             wr_req.last_be = 0;
+        }
+
+        if (hdr.pref_present && (hdr.pref_type == 0b10001))
+        {
+            wr_req.pasid = hdr.pref & 0xfffff;
         }
 
         mqueue_send(sim2app_membus_wr_req_tx, (char *) &wr_req, sizeof(wr_req));
@@ -620,6 +637,43 @@ static void pcie_tlp_a2h_mrd(
         pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
     }
 
+    // Address translation request?
+    if (hdr->u.req.attr.at == 1)
+    {
+        if (hdr->dm_mode)
+        {
+            ASE_ERR("AFU Tx TLP - ATS request must be PU encoded:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+        if (hdr->len_bytes & 1)
+        {
+            ASE_ERR("AFU Tx TLP - ATS request byte length must be a multiple of 8:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+        if (hdr->u.req.addr & 0xfff)
+        {
+            ASE_ERR("AFU Tx TLP - ATS request address must be 4KB -aligned:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+        if (hdr->len_bytes > 128)
+        {
+            ASE_ERR("AFU Tx TLP - ATS request length limited to read completion boundary (128 bytes):\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+
+        if (func_is_atomic_req(hdr->fmt_type))
+        {
+            ASE_ERR("AFU Tx TLP - ATS request illegal atomic op:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+        }
+    }
+
+    if (hdr->u.req.attr.at > 2)
+    {
+        ASE_ERR("AFU Tx TLP - Illegal address type:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
     if (hdr->tag >= pcie_ss_param_cfg.max_outstanding_dma_rd_reqs)
     {
         ASE_ERR("AFU Tx TLP - Illegal DMA read request tag:\n");
@@ -658,6 +712,7 @@ static void pcie_tlp_a2h_mrd(
     static ase_host_memory_read_req rd_req;
     rd_req.req = HOST_MEM_REQ_READ;
     rd_req.addr = hdr->u.req.addr;
+    rd_req.addr_type = hdr->u.req.attr.at;
     if ((hdr->len_bytes <= 4) && ! hdr->u.req.last_dw_be && ! hdr->u.req.first_dw_be)
     {
         // Single word read with all bytes disabled -- a fence
@@ -668,6 +723,11 @@ static void pcie_tlp_a2h_mrd(
         rd_req.data_bytes = hdr->len_bytes;
     }
     rd_req.tag = tag;
+
+    if (hdr->pref_present && (hdr->pref_type == 0b10001))
+    {
+        rd_req.pasid = hdr->pref & 0xfffff;
+    }
 
     if (func_is_atomic_req(hdr->fmt_type))
     {

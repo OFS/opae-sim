@@ -50,7 +50,12 @@
 #define HOST_MEM_REQ_READ 0
 #define HOST_MEM_REQ_WRITE 1
 #define HOST_MEM_REQ_ATOMIC 2   // Atomic requests are sent in the read queue
-typedef uint64_t ase_host_memory_req;
+typedef uint32_t ase_host_memory_req;
+
+#define HOST_MEM_AT_UNTRANS 0   // Untranslated address (IOVA)
+#define HOST_MEM_AT_REQ_TRANS 1 // Translation request
+#define HOST_MEM_AT_TRANS 2     // Translated address
+typedef uint32_t ase_host_memory_addr_type;
 
 #define HOST_MEM_STATUS_VALID 0
 // Reference to illegal address
@@ -80,8 +85,12 @@ typedef uint64_t ase_host_memory_status;
 typedef struct {
 	uint64_t addr;
 	ase_host_memory_req req;
+    ase_host_memory_addr_type addr_type;
 	uint32_t data_bytes;
 	uint32_t tag;
+
+    uint32_t pasid;
+    uint32_t dummy_pad; // 64 bit alignment
 
     // Atomic update payload. Since it is fixed length and small it is sent
     // along with the request. Independent of size, two input functions like
@@ -115,6 +124,9 @@ typedef struct {
 typedef struct {
 	uint64_t addr;
 	ase_host_memory_req req;
+    ase_host_memory_addr_type addr_type;
+
+    uint32_t pasid;
 
 	// Byte range (PCIe-style 4 bit first byte/last byte enable mask.)
 	// fbe and lbe are ignored when byte_n is 0. Data_bytes must be a
@@ -144,23 +156,26 @@ typedef struct {
 
 #ifndef SIM_SIDE
 
-// Pin a page at specified virtual address. Returns the corresponding
-// I/O address (simulated host physical address).
+// Pin a page at specified virtual address. Allocates and returns
+// an IOVA.
 int ase_host_memory_pin(void *va, uint64_t *iova, uint64_t length);
-// Unpin the page at iova.
+// Unpin the page at IOVA.
 int ase_host_memory_unpin(uint64_t iova, uint64_t length);
 
-// Translate to simulated physical address space.
-uint64_t ase_host_memory_va_to_pa(uint64_t va, uint64_t length);
-
-// Translate from simulated physical address space.  By setting "lock"
+// Translate from simulated IOVA address space.  By setting "lock"
 // in the request, the internal page table lock is not released on
 // return. This allows a caller to be sure that a page will remain
 // in the table long enough to access the data to which pa points.
 // Callers using "lock" must call ase_host_memory_unlock() to
 // release the page table lock and avoid deadlocks.
-uint64_t ase_host_memory_pa_to_va(uint64_t pa, bool lock);
+uint64_t ase_host_memory_iova_to_va(uint64_t iova, bool lock);
 void ase_host_memory_unlock(void);
+
+// Translate a VA to simulated physical address space and add
+// the address to the PA->VA tracking table. This is used by the
+// PCIe ATS emulation. It is not a translation to IOVA!
+// The page length is an output.
+uint64_t ase_host_memory_va_to_pa(uint64_t va, uint64_t *length);
 
 // Initialize/terminate page address translation.
 int ase_host_memory_initialize(void);

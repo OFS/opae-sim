@@ -66,6 +66,7 @@ target_link_libraries(ase
         ${libuuid_LIBRARIES}
         ${librt_LIBRARIES}
         opae-c
+        opaemem
 )
 
 # Define headers for this library. PUBLIC headers are used for

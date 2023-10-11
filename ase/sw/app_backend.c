@@ -29,6 +29,7 @@
 #endif
 #define _GNU_SOURCE
 
+#include <byteswap.h>
 #include <unistd.h>
 #include <sys/mman.h>
 
@@ -1338,7 +1339,7 @@ void allocate_buffer(struct buffer_t *mem, uint64_t *suggested_vaddr)
 #endif
 
 	// Assign a simulated physical address
-	mem->fake_paddr = ase_host_memory_va_to_pa(mem->vbase, mem->memsize);
+	mem->fake_paddr = ase_host_memory_va_to_pa(mem->vbase, NULL);
 
 	// Autogenerate buffer index
 	mem->index = asebuf_index_count;
@@ -1722,6 +1723,31 @@ static uint64_t membus_atomic_upd(void *va, uint32_t data_bytes, uint32_t atomic
 
 
 /*
+ * Encode a 64 bit physical address, translated from a VA, in a PCIe ATS
+ * completion payload.
+ */
+static uint64_t pcie_ats_pa_enc(uint64_t pa, uint64_t page_len)
+{
+	// Valid?
+	if (pa == INT64_C(-1))
+		return 0;
+
+	// Ensure the low 12 flag bits are clear
+	pa &= ~INT64_C(0xfff);
+	// Set the read and write access bits
+	pa |= 3;
+
+	// Page size is encoded starting in bit 11 (the S flag) and then a mask of
+	// ones to fill a page. See 10.2.3.2 in the PCIe standard.
+	uint64_t page_mask = (page_len >> 12) - 1;
+	pa |= (page_mask << 11);
+
+	// Swizzle bytes into the required order
+	return bswap_64(pa);
+}
+
+
+/*
  * Service simulator memory read/write requests.
  */
 static void *membus_rd_watcher(void *arg)
@@ -1734,14 +1760,46 @@ static void *membus_rd_watcher(void *arg)
 	ase_host_memory_read_rsp rd_rsp;
 	ase_memset(&rd_rsp, 0, sizeof(rd_rsp));
 
+	// Buffer for payload in response to an address translation request
+	uint64_t ats_rsp_payload[16];
+	ase_memset(&ats_rsp_payload, 0, sizeof(ats_rsp_payload));
+
 	// While application is running
 	while (membus_exist_status == ESTABLISHED) {
 		if (mqueue_recv(sim2app_membus_rd_req_rx, (char *) &rd_req, sizeof(rd_req)) == ASE_MSG_PRESENT) {
-			rd_rsp.pa = rd_req.addr;
-			rd_rsp.va = ase_host_memory_pa_to_va(rd_req.addr, true);
+			bool is_ats_req = (rd_req.addr_type == HOST_MEM_AT_REQ_TRANS);
+			bool need_mem_unlock = false;
+
+			if (!is_ats_req)
+			{
+				// Normal read
+				rd_rsp.pa = rd_req.addr;
+				rd_rsp.va = ase_host_memory_iova_to_va(rd_req.addr, true);
+				rd_rsp.status = HOST_MEM_STATUS_VALID;
+				need_mem_unlock = true;
+
+				if (!rd_rsp.va)
+				{
+					ASE_ERR("Read from unmapped IOVA 0x%016" PRIx64 "\n", rd_req.addr);
+					raise(SIGABRT);
+				}
+			}
+			else
+			{
+				// Address translation. Request address is virtual.
+				rd_rsp.pa = rd_req.addr;
+				rd_rsp.va = rd_req.addr;
+				rd_rsp.status = membus_op_status(rd_rsp.va, rd_rsp.pa, rd_req.data_bytes);
+
+				ase_memset(&ats_rsp_payload, 0, sizeof(ats_rsp_payload));
+
+				uint64_t page_len;
+				uint64_t pa = ase_host_memory_va_to_pa(rd_req.addr, &page_len);
+				ats_rsp_payload[0] = pcie_ats_pa_enc(pa, page_len);
+			}
+
 			rd_rsp.data_bytes = rd_req.data_bytes;
 			rd_rsp.tag = rd_req.tag;
-			rd_rsp.status = membus_op_status(rd_rsp.va, rd_rsp.pa, rd_req.data_bytes);
 			if (rd_rsp.status != HOST_MEM_STATUS_VALID) {
 				rd_rsp.data_bytes = 0;
 			}
@@ -1749,38 +1807,44 @@ static void *membus_rd_watcher(void *arg)
 			mqueue_send(app2sim_membus_rd_rsp_tx, (char *) &rd_rsp, sizeof(rd_rsp));
 			if ((rd_rsp.status == HOST_MEM_STATUS_VALID) && rd_rsp.data_bytes) {
 
-                if (rd_req.req != HOST_MEM_REQ_ATOMIC)
-                {
-                    // Normal read (not atomic)
-                    mqueue_send(app2sim_membus_rd_rsp_tx, (char *) rd_rsp.va, rd_rsp.data_bytes);
-                }
-                else
-                {
-                    // Atomic update
-                    uint64_t rd_rsp_data64;
-                    rd_rsp_data64 = membus_atomic_upd((void *) rd_rsp.va, rd_req.data_bytes,
-                                                      rd_req.atomic_func,
-                                                      rd_req.atomic_wr_data[0],
-                                                      rd_req.atomic_wr_data[1]);
+				if (is_ats_req)
+				{
+					// Address translation response
+					mqueue_send(app2sim_membus_rd_rsp_tx, (char *) &ats_rsp_payload, rd_rsp.data_bytes);
+				}
+				else if (rd_req.req != HOST_MEM_REQ_ATOMIC)
+				{
+					// Normal read (not atomic)
+					mqueue_send(app2sim_membus_rd_rsp_tx, (char *) rd_rsp.va, rd_rsp.data_bytes);
+				}
+				else
+				{
+					// Atomic update
+					uint64_t rd_rsp_data64;
+					rd_rsp_data64 = membus_atomic_upd((void *) rd_rsp.va, rd_req.data_bytes,
+									  rd_req.atomic_func,
+									  rd_req.atomic_wr_data[0],
+									  rd_req.atomic_wr_data[1]);
 
-                    if (rd_req.data_bytes == 4)
-                    {
-                        uint32_t rd_rsp_data32 = rd_rsp_data64;
-                        mqueue_send(app2sim_membus_rd_rsp_tx, (char *)&rd_rsp_data32, 4);
-                    }
-                    else if (rd_req.data_bytes == 8)
-                    {
-                        mqueue_send(app2sim_membus_rd_rsp_tx, (char *)&rd_rsp_data64, 8);
-                    }
-                    else
-                    {
-                        ASE_ERR("Illegal atomic function size: %d\n", rd_req.data_bytes);
-                        raise(SIGABRT);
-                    }
-                }
+					if (rd_req.data_bytes == 4)
+					{
+						uint32_t rd_rsp_data32 = rd_rsp_data64;
+						mqueue_send(app2sim_membus_rd_rsp_tx, (char *)&rd_rsp_data32, 4);
+					}
+					else if (rd_req.data_bytes == 8)
+					{
+						mqueue_send(app2sim_membus_rd_rsp_tx, (char *)&rd_rsp_data64, 8);
+					}
+					else
+					{
+						ASE_ERR("Illegal atomic function size: %d\n", rd_req.data_bytes);
+						raise(SIGABRT);
+					}
+				}
 			}
 
-			ase_host_memory_unlock();
+			if (need_mem_unlock)
+				ase_host_memory_unlock();
 		}
 	}
 
@@ -1831,8 +1895,14 @@ static void *membus_wr_watcher(void *arg)
 			}
 
 			wr_rsp.pa = wr_req.addr;
-			wr_rsp.va = ase_host_memory_pa_to_va(wr_req.addr, true);
+			wr_rsp.va = ase_host_memory_iova_to_va(wr_req.addr, true);
 			wr_rsp.status = membus_op_status(wr_rsp.va, wr_rsp.pa, wr_req.data_bytes);
+
+			if (!wr_rsp.va)
+			{
+				ASE_ERR("Write to unmapped IOVA 0x%016" PRIx64 "\n", wr_req.addr);
+				raise(SIGABRT);
+			}
 
 			// PCIe byte enable mode. Operate on 32 bit DWORDs and mask first/last words.
 			if (wr_req.byte_en)
@@ -1866,7 +1936,7 @@ static void *membus_wr_watcher(void *arg)
 					}
 				}
 
-                if (len) ase_memcpy(dst, src, len);
+				if (len) ase_memcpy(dst, src, len);
 
 				if (masked_lb)
 				{

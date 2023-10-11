@@ -308,6 +308,10 @@ typedef struct
     uint16_t vf_num;
     uint8_t pf_num;
 
+    bool pref_present;
+    uint8_t pref_type;
+    uint32_t pref;
+
     uint16_t req_id;
     uint16_t tag;
 

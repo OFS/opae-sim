@@ -89,6 +89,12 @@ void pcie_ss_tlp_hdr_pack(
     v |= (uint32_t)(hdr->pf_num);
     svPutPartselBit(tdata, v, 32*5, 32);
 
+    v = 0;
+    v |= (uint32_t)(hdr->pref_present) << 29;
+    v |= (uint32_t)(hdr->pref_type) << 24;
+    v |= (uint32_t)(hdr->pref);
+    svPutPartselBit(tdata, v, 32*4, 32);
+
     svPutPartselBit(tdata, hdr->metadata, 32*7, 32);
     svPutPartselBit(tdata, hdr->metadata >> 32, 32*6, 32);
 
@@ -175,6 +181,11 @@ void pcie_ss_tlp_hdr_unpack(
     hdr->vf_active = (v >> 14) & 1;
     hdr->vf_num = (v >> 3) & 0x7ff;
     hdr->pf_num = v & 0x7;
+
+    svGetPartselBit(&v, tdata, 32*4, 32);
+    hdr->pref_present = (v >> 29) & 1;
+    hdr->pref_type = (v >> 24) & 0x1f;
+    hdr->pref = v & 0xffffff;
 
     svGetPartselBit(&v, tdata, 32*7, 32);
     svGetPartselBit(&v1, tdata, 32*6, 32);
