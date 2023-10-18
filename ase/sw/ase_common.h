@@ -375,7 +375,7 @@ typedef struct {
 	uint32_t msg0;
 	uint32_t msg1;
 	uint32_t msg2;
-    uint16_t tag;
+	uint16_t tag;
 } ase_pcie_msg_hdr_t;
 
 
