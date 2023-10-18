@@ -177,6 +177,12 @@ void ase_host_memory_unlock(void);
 // The page length is an output.
 uint64_t ase_host_memory_va_to_pa(uint64_t va, uint64_t *length);
 
+// Return the size of the memory page at "va", in bytes. If no memory is mapped
+// at the address return 0.
+//
+// Returns -1 on fatal error.
+int64_t ase_host_memory_va_page_len(uint64_t va);
+
 // Initialize/terminate page address translation.
 int ase_host_memory_initialize(void);
 void ase_host_memory_terminate(void);

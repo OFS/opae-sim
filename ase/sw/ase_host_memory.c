@@ -207,7 +207,7 @@ static inline uint64_t ase_host_memory_gen_xor_mask(int pt_level)
  *
  * Returns -1 on fatal error.
  */
-static int64_t ase_host_memory_va_page_len(uint64_t va)
+int64_t ase_host_memory_va_page_len(uint64_t va)
 {
 	int64_t page_size;
 	char line[4096];
@@ -282,6 +282,8 @@ static int64_t ase_host_memory_va_page_len(uint64_t va)
  */
 uint64_t ase_host_memory_va_to_pa(uint64_t va, uint64_t *length)
 {
+	uint64_t pa = 0;
+
 	if (pthread_mutex_lock(&ase_pt_lock)) {
 		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
 		return INT64_C(-1);
@@ -293,9 +295,11 @@ uint64_t ase_host_memory_va_to_pa(uint64_t va, uint64_t *length)
 	int64_t page_len = ase_host_memory_va_page_len(va);
 	if (page_len == -1)
 		goto err_unlock;
+	if (page_len == 0)
+		goto out_unlock;
 
 	int pt_level = ase_pt_length_to_level(page_len);
-	uint64_t pa = va ^ ase_host_memory_gen_xor_mask(pt_level);
+	pa = va ^ ase_host_memory_gen_xor_mask(pt_level);
 
 	// Is the address already in the table?
 	uint64_t cur_table_va;

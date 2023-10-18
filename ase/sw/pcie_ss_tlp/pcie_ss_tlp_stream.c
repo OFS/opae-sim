@@ -1076,6 +1076,53 @@ static void pcie_tlp_a2h_interrupt(
 }
 
 
+//
+// Process a PCIe message.
+//
+static void pcie_tlp_a2h_msg(
+    long long cycle,
+    int tlast,
+    const t_pcie_ss_hdr_upk *hdr,
+    const svBitVecVal *tdata,
+    const svBitVecVal *tuser,
+    const svBitVecVal *tkeep
+)
+{
+    static ase_pcie_msg_hdr_t msg_hdr;
+
+    if (!tlast)
+    {
+        ASE_ERR("AFU Tx TLP - expected EOP with msg:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
+
+    msg_hdr.fmt_type = hdr->fmt_type;
+    msg_hdr.msg_code = hdr->u.msg.msg_code;
+    msg_hdr.len_bytes = hdr->len_bytes;
+    msg_hdr.req_id = hdr->req_id;
+    msg_hdr.tag = hdr->tag;
+    msg_hdr.msg0 = hdr->u.msg.msg0;
+    msg_hdr.msg1 = hdr->u.msg.msg1;
+    msg_hdr.msg2 = hdr->u.msg.msg2;
+
+    switch (hdr->u.msg.msg_code)
+    {
+      case PCIE_MSGCODE_ATS_INVAL_CPL:
+      case PCIE_MSGCODE_PAGE_REQ:
+        // These codes are valid
+        break;
+
+      default:
+        ASE_ERR("AFU Tx TLP - unsupported msg type:\n");
+        pcie_tlp_a2h_error_and_kill(cycle, tlast, hdr, tdata, tuser, tkeep);
+    }
+
+    mqueue_send(sim2app_pcie_msg_tx, (char *) &msg_hdr, sizeof(msg_hdr));
+}
+
+
 // ========================================================================
 //
 //  Host to AFU processing
@@ -1135,6 +1182,53 @@ void pcie_ss_mmio_new_req(const mmio_t *pkt)
         mmio_read_state[m->mmio_pkt.slot_idx].busy = true;
         mmio_read_state[m->mmio_pkt.slot_idx].start_cycle = cur_cycle;
         mmio_read_state[m->mmio_pkt.slot_idx].tid = m->mmio_pkt.tid;
+    }
+}
+
+
+//
+// Process a host to AFU PCIe message.
+//
+static void pcie_tlp_h2a_msg(
+    long long cycle,
+    int *tvalid,
+    int *tlast,
+    svBitVecVal *tdata,
+    svBitVecVal *tuser,
+    svBitVecVal *tkeep
+)
+{
+    int status;
+    ase_pcie_msg_hdr_t hdr_recv;
+    t_pcie_ss_hdr_upk hdr;
+
+    *tvalid = 0;
+    *tlast = 0;
+
+    status = mqueue_recv(app2sim_pcie_msg_rx, (char *) &hdr_recv, sizeof(hdr_recv));
+    if (status == ASE_MSG_PRESENT)
+    {
+        *tvalid = 1;
+        *tlast = 1;
+
+        pcie_ss_tlp_hdr_reset(&hdr);
+        hdr.fmt_type = hdr_recv.fmt_type;
+        hdr.len_bytes = hdr_recv.len_bytes;
+        hdr.req_id = hdr_recv.req_id;
+        hdr.tag = hdr_recv.tag;
+        hdr.u.msg.msg_code = hdr_recv.msg_code;
+        hdr.u.msg.msg0 = hdr_recv.msg0;
+        hdr.u.msg.msg1 = hdr_recv.msg1;
+        hdr.u.msg.msg2 = hdr_recv.msg2;
+
+        hdr.pf_num = pcie_ss_param_cfg.default_pf_num;
+        hdr.vf_num = pcie_ss_param_cfg.default_vf_num;
+        hdr.vf_active = pcie_ss_param_cfg.default_vf_active;
+
+        pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
+
+        fprintf_pcie_ss_host_to_afu(logfile, cycle, *tlast, &hdr,
+                                    tdata, tuser, tkeep);
     }
 }
 
@@ -1543,7 +1637,13 @@ int pcie_ss_stream_host_to_afu(
     switch (host_to_afu_state)
     {
       case TLP_STATE_SOP:
-        if (mmio_req_head && ! pcie_tlp_h2a_mem(cycle, tvalid, tlast, tdata, tuser, tkeep))
+        // Has a new h2a PCIe message arrived? If it has, tvalid will be set
+        // the call as a side effect. Messages are all a single beat, so no
+        // state change is required.
+        pcie_tlp_h2a_msg(cycle, tvalid, tlast, tdata, tuser, tkeep);
+
+        if (!*tvalid &&
+            mmio_req_head && ! pcie_tlp_h2a_mem(cycle, tvalid, tlast, tdata, tuser, tkeep))
         {
             host_to_afu_state = TLP_STATE_MEM;
         }
@@ -1597,11 +1697,15 @@ int pcie_ss_stream_afu_to_host(
         pcie_ss_tlp_hdr_unpack(&hdr, tdata, tuser, tkeep);
         fprintf_pcie_ss_afu_to_host(logfile, cycle, tlast, &hdr, tdata, tuser, tkeep);
         
-        if (tlp_func_is_interrupt_req(hdr.fmt_type))
+        if (!hdr.dm_mode && tlp_func_is_msg(hdr.fmt_type))
+        {
+            pcie_tlp_a2h_msg(cycle, tlast, &hdr, tdata, tuser, tkeep);
+        }
+        else if (tlp_func_is_interrupt_req(hdr.fmt_type))
         {
             pcie_tlp_a2h_interrupt(cycle, tlast, &hdr, tdata, tuser, tkeep);
         }
-        if (tlp_func_is_completion(hdr.fmt_type))
+        else if (tlp_func_is_completion(hdr.fmt_type))
         {
             if (!tlp_func_has_data(hdr.fmt_type))
             {
