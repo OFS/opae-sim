@@ -69,6 +69,10 @@ typedef struct membus_s {
 	pthread_t membus_wr_watch_tid;
 } MEMBUS_S;
 
+typedef struct pcie_msg_s {
+	pthread_t pcie_msg_watch_tid;	   // PCIe msg watch thread ID
+} PCIE_MSG_S;
+
 // MMIO Scoreboard (used in APP-side only)
 struct mmio_scoreboard_line_t {
 	uint64_t   data;
@@ -109,10 +113,13 @@ static int sim2app_membus_rd_req_rx;
 static int app2sim_membus_rd_rsp_tx;
 static int sim2app_membus_wr_req_rx;
 static int app2sim_membus_wr_rsp_tx;
+static int sim2app_pcie_msg_rx;
+static int app2sim_pcie_msg_tx;
 
 MMIO_S io_s;
 UMAS_S umas_s;
 MEMBUS_S membus_s;
+PCIE_MSG_S pcie_msg_s;
 
 uint64_t *mmio_afu_vbase;
 uint64_t *umsg_umas_vbase;            // Base addresses of required regions
@@ -134,9 +141,12 @@ static uint32_t mq_exist_status;
 static uint32_t mmio_exist_status;
 static uint32_t umas_exist_status;
 static uint32_t membus_exist_status;
+static uint32_t pcie_msg_exist_status;
 
 static void *membus_rd_watcher(void *arg);
 static void *membus_wr_watcher(void *arg);
+
+static void *pcie_msg_watcher(void *arg);
 
 // Debug logs
 #ifdef ASE_DEBUG
@@ -185,6 +195,8 @@ void close_mq(void)
 	mqueue_close(app2sim_membus_rd_rsp_tx);
 	mqueue_close(sim2app_membus_wr_req_rx);
 	mqueue_close(app2sim_membus_wr_rsp_tx);
+	mqueue_close(sim2app_pcie_msg_rx);
+	mqueue_close(app2sim_pcie_msg_tx);
 }
 
 /*
@@ -443,6 +455,10 @@ void session_init(void)
 			mqueue_open(mq_array[12].name, mq_array[12].perm_flag);
 		app2sim_membus_wr_rsp_tx =
 			mqueue_open(mq_array[13].name, mq_array[13].perm_flag);
+		sim2app_pcie_msg_rx =
+			mqueue_open(mq_array[14].name, mq_array[14].perm_flag);
+		app2sim_pcie_msg_tx =
+			mqueue_open(mq_array[15].name, mq_array[15].perm_flag);
 
 		// Message queues have been established
 		mq_exist_status = ESTABLISHED;
@@ -561,6 +577,16 @@ void session_init(void)
 			failure_cleanup();
 		} else {
 			ASE_MSG("WR SUCCESS\n");
+		}
+
+		// Initiate PCIe message bus watcher
+		ASE_MSG("Starting PCIe message bus watcher ... \n");
+		pcie_msg_exist_status = ESTABLISHED;
+		thr_err = pthread_create(&pcie_msg_s.pcie_msg_watch_tid, NULL, &pcie_msg_watcher, NULL);
+		if (thr_err != 0) {
+			failure_cleanup();
+		} else {
+			ASE_MSG("MSG SUCCESS\n");
 		}
 
 		while (umas_init_flag != 1)
@@ -733,6 +759,18 @@ void session_deinit(void)
 				fprintf(stderr, "Memory bus pthread_cancel failed -- Ignoring\n");
 			} else {
 				pthread_join(membus_s.membus_wr_watch_tid, NULL);
+			}
+		}
+
+		// Stop message bus watcher
+		ASE_MSG("Stopping PCIe message bus watcher\n");
+		if (pcie_msg_exist_status == ESTABLISHED) {
+			pcie_msg_exist_status = NOT_ESTABLISHED;
+
+			if (pthread_cancel(pcie_msg_s.pcie_msg_watch_tid) != 0) {
+				fprintf(stderr, "PCIe message bus pthread_cancel failed -- Ignoring\n");
+			} else {
+				pthread_join(pcie_msg_s.pcie_msg_watch_tid, NULL);
 			}
 		}
 
@@ -1729,7 +1767,7 @@ static uint64_t membus_atomic_upd(void *va, uint32_t data_bytes, uint32_t atomic
 static uint64_t pcie_ats_pa_enc(uint64_t pa, uint64_t page_len)
 {
 	// Valid?
-	if (pa == INT64_C(-1))
+	if (!pa)
 		return 0;
 
 	// Ensure the low 12 flag bits are clear
@@ -1789,12 +1827,18 @@ static void *membus_rd_watcher(void *arg)
 				// Address translation. Request address is virtual.
 				rd_rsp.pa = rd_req.addr;
 				rd_rsp.va = rd_req.addr;
-				rd_rsp.status = membus_op_status(rd_rsp.va, rd_rsp.pa, rd_req.data_bytes);
+				rd_rsp.status = HOST_MEM_STATUS_VALID;
 
 				ase_memset(&ats_rsp_payload, 0, sizeof(ats_rsp_payload));
 
 				uint64_t page_len;
 				uint64_t pa = ase_host_memory_va_to_pa(rd_req.addr, &page_len);
+				if (pa == INT64_C(-1))
+				{
+					ASE_ERR("PCIe ATS error looking up VA 0x%016" PRIx64 "\n", rd_req.addr);
+					raise(SIGABRT);
+				}
+
 				ats_rsp_payload[0] = pcie_ats_pa_enc(pa, page_len);
 			}
 
@@ -1960,6 +2004,60 @@ static void *membus_wr_watcher(void *arg)
 	ase_free_buffer(data);
 	printf("Stop MEMBUS WR REQ\n");
 
+	return 0;
+}
+
+/*
+ * Process PCIe messages, such as page request services.
+ */
+static void *pcie_msg_watcher(void *arg)
+{
+	UNUSED_PARAM(arg);
+	// Mark as thread that can be cancelled anytime
+	pthread_setcanceltype(PTHREAD_CANCEL_ENABLE, NULL);
+
+	ase_pcie_msg_hdr_t hdr_recv;
+	ase_pcie_msg_hdr_t hdr_send;
+
+	// While application is running
+	while (pcie_msg_exist_status == ESTABLISHED) {
+		if (mqueue_recv(sim2app_pcie_msg_rx, (char *) &hdr_recv, sizeof(hdr_recv)) == ASE_MSG_PRESENT) {
+			ase_memset(&hdr_send, 0, sizeof(hdr_send));
+
+			if (hdr_recv.fmt_type == 0x30 && hdr_recv.msg_code == 0x4)
+			{
+				// Page request
+
+				// Check that requested VA is mapped
+				uint64_t va = (((uint64_t)hdr_recv.msg1 << 32) | hdr_recv.msg2) & ~INT64_C(0xfff);
+				int64_t page_len = ase_host_memory_va_page_len(va);
+				if (page_len < 0)
+				{
+					ASE_ERR("pcie_msg_watcher -- error looking up page length!\n");
+				}
+				// 0: success, 1: page not mapped
+				uint32_t resp_code = (page_len == 0) ? 1 : 0;
+
+				// Construct the response
+				hdr_send.fmt_type = 0x32;
+				hdr_send.msg_code = 0x5;
+				hdr_send.tag = hdr_recv.tag;
+				hdr_send.msg0 = hdr_recv.msg0;
+				hdr_send.msg1 = hdr_recv.req_id << 16;
+				hdr_send.msg1 |= (hdr_recv.msg2 >> 3) & 0x1ff;	// Page request group IDX
+				hdr_send.msg1 |= (resp_code << 12);		// 0 if VA mapped, else 1
+
+				mqueue_send(app2sim_pcie_msg_tx, (char *) &hdr_send, sizeof(hdr_send));
+			}
+			else
+			{
+				ASE_ERR("pcie_msg_watcher -- unexpected fmt_type 0x%x, msg_code 0x%x!\n",
+					hdr_recv.fmt_type, hdr_recv.msg_code);
+			}
+		}
+	}
+
+	printf("Stop PCIe message watcher\n");
 	return 0;
 }
 

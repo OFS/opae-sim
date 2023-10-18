@@ -363,6 +363,22 @@ typedef struct umsgcmd_t {
 } umsgcmd_t;
 
 
+/*
+ * PCIe message. This encoding is used for page request services and address
+ * invalidation.
+ */
+typedef struct {
+	uint8_t fmt_type;
+	uint8_t msg_code;
+	uint16_t len_bytes;
+	uint16_t req_id;
+	uint32_t msg0;
+	uint32_t msg1;
+	uint32_t msg2;
+    uint16_t tag;
+} ase_pcie_msg_hdr_t;
+
+
 // Compute buffer_t size
 #define BUFSIZE     sizeof(struct buffer_t)
 
@@ -560,7 +576,7 @@ extern "C" {
 #define ASE_MQ_MAXMSG     8
 #define ASE_MQ_MSGSIZE    1024
 #define ASE_MQ_NAME_LEN   64
-#define ASE_MQ_INSTANCES  14
+#define ASE_MQ_INSTANCES  16
 // Message presence setting
 #define ASE_MSG_PRESENT 0xD33D
 #define ASE_MSG_ABSENT  0xDEAD
@@ -775,6 +791,8 @@ extern int sim2app_membus_rd_req_tx;
 extern int app2sim_membus_rd_rsp_rx;
 extern int sim2app_membus_wr_req_tx;
 extern int app2sim_membus_wr_rsp_rx;
+extern int sim2app_pcie_msg_tx;
+extern int app2sim_pcie_msg_rx;
 #endif				// End SIM_SIDE
 
 // There is no global fixes for this

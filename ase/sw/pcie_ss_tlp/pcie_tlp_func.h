@@ -70,6 +70,14 @@ typedef enum
 }
 t_pcie_fmttype_enum;
 
+typedef enum
+{
+    PCIE_MSGCODE_ATS_INVAL_REQ = B8(00000001), // ATS invalidate request
+    PCIE_MSGCODE_ATS_INVAL_CPL = B8(00000010), // ATS invalidate complation
+    PCIE_MSGCODE_PAGE_REQ      = B8(00000100), // Page request interface - map a page
+    PCIE_MSGCODE_PAGE_RSP      = B8(00000101)  // Page group response
+}
+t_pcie_msgcode_enum;
 
 static inline bool tlp_func_is_addr32(uint8_t fmttype)
 {
@@ -104,6 +112,11 @@ static inline bool func_is_atomic_req (uint8_t fmttype)
 static inline bool func_is_atomic_cas_req (uint8_t fmttype)
 {
     return ((fmttype == PCIE_FMTTYPE_CAS32) || (fmttype == PCIE_FMTTYPE_CAS64));
+}
+
+static inline bool tlp_func_is_msg(uint8_t fmttype)
+{
+    return ((fmttype & 0xb8) == 0x30);
 }
 
 static inline bool tlp_func_is_mem_req(uint8_t fmttype)

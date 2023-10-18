@@ -105,6 +105,35 @@ static void fprintf_pcie_ss_cpl(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
             hdr->req_id, hdr->tag, hdr->u.cpl.low_addr);
 }
 
+static void fprintf_pcie_ss_msg(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
+{
+    fprintf(stream, "Msg    PU len_bytes 0x%04x req_id 0x%04x",
+            hdr->len_bytes, hdr->req_id);
+    fprintf_pcie_ss_prefix(stream, hdr);
+
+    switch (hdr->u.msg.msg_code)
+    {
+      case PCIE_MSGCODE_ATS_INVAL_REQ:
+        fprintf(stream, " ats_inval_req");
+        break;
+      case PCIE_MSGCODE_ATS_INVAL_CPL:
+        fprintf(stream, " ats_inval_cpl");
+        break;
+      case PCIE_MSGCODE_PAGE_REQ:
+        fprintf(stream, " page_req tag 0x%02x addr 0x%08x%08x gidx 0x%x lwr 0x%x",
+                hdr->u.msg.msg0, hdr->u.msg.msg1, hdr->u.msg.msg2 & 0xfffff000,
+                (hdr->u.msg.msg2 >> 3) & 0x1ff, hdr->u.msg.msg2 & 0x7);
+        break;
+      case PCIE_MSGCODE_PAGE_RSP:
+        fprintf(stream, " page_rsp tag 0x%02x dst_id 0x%04x gidx 0x%x rcode 0x%x",
+                hdr->u.msg.msg0, hdr->u.msg.msg1 >> 16, hdr->u.msg.msg1 & 0x1ff,
+                (hdr->u.msg.msg1 >> 12) & 0xf);
+        break;
+      default:
+        fprintf(stream, " unknown");
+    }
+}
+
 static void fprintf_pcie_ss_intr(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
     fprintf_pcie_ss_base(stream, hdr);
@@ -120,6 +149,10 @@ void fprintf_pcie_ss_hdr(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
     else if (tlp_func_is_completion(hdr->fmt_type))
     {
         fprintf_pcie_ss_cpl(stream, hdr);
+    }
+    else if (!hdr->dm_mode && tlp_func_is_msg(hdr->fmt_type))
+    {
+        fprintf_pcie_ss_msg(stream, hdr);
     }
     else if (tlp_func_is_interrupt_req(hdr->fmt_type))
     {

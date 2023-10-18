@@ -53,6 +53,8 @@ int sim2app_membus_rd_req_tx;
 int app2sim_membus_rd_rsp_rx;
 int sim2app_membus_wr_req_tx;
 int app2sim_membus_wr_rsp_rx;
+int sim2app_pcie_msg_tx;
+int app2sim_pcie_msg_rx;
 static int intr_event_fds[MAX_USR_INTRS];
 
 int glbl_test_cmplt_cnt;                // Keeps the number of session_deinits received
@@ -1329,6 +1331,10 @@ int ase_init(void)
 		mqueue_open(mq_array[12].name, mq_array[12].perm_flag);
 	app2sim_membus_wr_rsp_rx =
 		mqueue_open(mq_array[13].name, mq_array[13].perm_flag);
+	sim2app_pcie_msg_tx =
+		mqueue_open(mq_array[14].name, mq_array[14].perm_flag);
+	app2sim_pcie_msg_rx =
+		mqueue_open(mq_array[15].name, mq_array[15].perm_flag);
 
 	int i;
 
@@ -1463,6 +1469,8 @@ void start_simkill_countdown(void)
 	mqueue_close(app2sim_membus_rd_rsp_rx);
 	mqueue_close(sim2app_membus_wr_req_tx);
 	mqueue_close(app2sim_membus_wr_rsp_rx);
+	mqueue_close(sim2app_pcie_msg_tx);
+	mqueue_close(app2sim_pcie_msg_rx);
 
 	int ipc_iter;
 	for (ipc_iter = 0; ipc_iter < ASE_MQ_INSTANCES; ipc_iter++)

@@ -257,6 +257,54 @@
 // } PCIe_CplHdr_t;
 //
 
+//
+//
+// PU Encoded messages (ATS invalidation, PRS, etc.):
+//
+// typedef struct packed {
+//     // Byte 31 - Byte 24
+//     logic   [63:0]      rsvd1;              // [DW6 31: 0] Reserved
+//
+//     // Byte 23 - Byte 20
+//     logic   [7:0]       rsvd2;              // [DW5 31:24] Reserved
+//     logic   [4:0]       slot_num;           // [DW5 23:19] Slot Number
+//     logic   [3:0]       bar_number;         // [DW5 18:15] Bar Number
+//     logic               vf_active;          // [DW5 14:14]
+//     logic   [10:0]      vf_num;             // [DW5 13: 3]
+//     logic   [2:0]       pf_num;             // [DW5  2: 0]
+//
+//     // Byte 19 - Byte 16
+//     logic   [1:0]       rsvd3;              // [DW4 31:30] Reserved
+//     logic               pref_present;       // [DW4 29:29] Prefix Present
+//     logic   [4:0]       pref_type;          // [DW4 28:24] Prefix Type
+//     logic   [23:0]      pref;               // [DW4 23:00] Prefix
+//
+//     // Byte 15 - Byte 12
+//     logic   [31:0]      msg2;               // [DW3 31: 0] Message-specific value
+//
+//     // Byte 11 - Byte 8
+//     logic   [31:0]      msg1;               // [DW2 31: 0] Message-specific value
+//
+//     // Byte 7 - Byte 4
+//     logic   [15:0]      req_id;             // [DW1 31:16]
+//     logic   [7:0]       msg0;               // [DW1 15: 8] Message-specific value (tag_l in messages with tags)
+//     logic   [7:0]       msg_code;           // [DW1  7: 0] Message code (see PCIE_MSGCODE_* above)
+//
+//     // Byte 3 - Byte 0
+//     ReqHdr_FmtType_e    fmt_type;           // [DW0 31:24] Specify the type (read/write) - 8 bits wide
+//     logic               tag_h;              // [DW0 23:23] For messages with tags (reserved in others)
+//     logic   [2:0]       TC;                 // [DW0 22:20] Traffic Channel
+//     logic               tag_m;              // [DW0 19:19] For messages with tags (reserved in others)
+//     logic               attr_h;             // [DW0 18:18]
+//     logic   [1:0]       rsvd4;              // [DW0 17:16]
+//     logic               TD;                 // [DW0 15:15]
+//     logic               EP;                 // [DW0 14:14]
+//     logic   [1:0]       attr_l;             // [DW0 13:12]
+//     logic   [1:0]       rsvd5;              // [DW0 11:10]
+//     logic   [9:0]       length;             // [DW0  9: 0] Length in DW
+// } PCIe_PUMsgHdr_t;
+//
+
 // Attributes (read/write requests)
 typedef struct
 {
@@ -297,6 +345,16 @@ typedef struct
 }
 t_pcie_ss_hdr_intr_upk;
 
+// Header fields in PU messages
+typedef struct
+{
+    uint32_t msg2;
+    uint32_t msg1;
+    uint8_t msg0;
+    uint8_t msg_code;
+}
+t_pcie_ss_hdr_msg_upk;
+
 typedef struct
 {
     uint64_t metadata;
@@ -322,6 +380,7 @@ typedef struct
         t_pcie_ss_hdr_req_upk req;
         t_pcie_ss_hdr_cpl_upk cpl;
         t_pcie_ss_hdr_intr_upk intr;
+        t_pcie_ss_hdr_msg_upk msg;
     } u;
 
     bool dm_mode;         // Data mover mode?

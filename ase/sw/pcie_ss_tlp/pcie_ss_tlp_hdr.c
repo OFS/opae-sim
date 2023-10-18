@@ -152,6 +152,17 @@ void pcie_ss_tlp_hdr_pack(
             svPutPartselBit(tdata, v, 32*1, 32);
         }
     }
+    else if (! hdr->dm_mode && tlp_func_is_msg(hdr->fmt_type))
+    {
+        v = 0;
+        v |= (uint32_t)(hdr->req_id) << 16;
+        v |= (uint32_t)(hdr->tag & 0xff) << 8;
+        v |= (uint32_t)(hdr->u.msg.msg_code);
+        svPutPartselBit(tdata, v, 32*1, 32);
+
+        svPutPartselBit(tdata, hdr->u.msg.msg1, 32*2, 32);
+        svPutPartselBit(tdata, hdr->u.msg.msg2, 32*3, 32);
+    }
 }
 
 // Unpack the hardware format into a C TLP struct
@@ -268,6 +279,21 @@ void pcie_ss_tlp_hdr_unpack(
         hdr->u.cpl.cpl_status = (v >> 13) & 0x7;
         hdr->u.cpl.bcm = (v >> 12) & 1;
         hdr->u.cpl.byte_count = v & 0xfff;
+    }
+    else if (! hdr->dm_mode && tlp_func_is_msg(hdr->fmt_type))
+    {
+        svGetPartselBit(&v, tdata, 32*1, 32);
+        hdr->tag = (((dw0 >> 23) & 1) << 9) |    // tag_h
+                   (((dw0 >> 19) & 1) << 8) |    // tag_m
+                   ((v >> 8) & 0xff);            // tag_l
+
+        hdr->len_bytes = (dw0 & 0x3ff) << 2;
+        hdr->req_id = (v >> 16) & 0xffff;
+        hdr->u.msg.msg0 = (v >> 8) & 0xff;
+        hdr->u.msg.msg_code = v & 0xff;
+
+        svGetPartselBit(&hdr->u.msg.msg1, tdata, 32*2, 32);
+        svGetPartselBit(&hdr->u.msg.msg2, tdata, 32*3, 32);
     }
     else if (tlp_func_is_interrupt_req(hdr->fmt_type))
     {

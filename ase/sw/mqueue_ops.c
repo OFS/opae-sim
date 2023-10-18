@@ -41,7 +41,9 @@ struct ipc_t mq_array[ASE_MQ_INSTANCES] = {
 	{ { "sim2app_membus_rd_req_smq" }, { 0, }, 0 },
 	{ { "app2sim_membus_rd_rsp_smq" }, { 0, }, 0 },
 	{ { "sim2app_membus_wr_req_smq" }, { 0, }, 0 },
-	{ { "app2sim_membus_wr_rsp_smq" }, { 0, }, 0 }
+	{ { "app2sim_membus_wr_rsp_smq" }, { 0, }, 0 },
+	{ { "sim2app_pcie_msg_smq"      }, { 0, }, 0 },
+	{ { "app2sim_pcie_msg_smq"      }, { 0, }, 0 }
 };
 
 /*
