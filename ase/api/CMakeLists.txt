@@ -40,6 +40,7 @@ set(ASEAPI_SRC
   ${API_DIR}/../sw/ase_ops.c
   ${API_DIR}/../sw/ase_strings.c
   ${API_DIR}/../sw/ase_host_memory.c
+  ${API_DIR}/../sw/ase_pcie_ats.c
   ${API_DIR}/../sw/app_backend.c
   ${API_DIR}/../sw/mqueue_ops.c
   ${API_DIR}/../sw/error_report.c
@@ -69,6 +70,15 @@ target_link_libraries(ase
         opaemem
 )
 
+
+# LD_PRELOAD library that intercepts memory allocation functions, e.g. mmap().
+# ASE models that track the address space have hooks that are called.
+set(ASE_PRELOAD_SRC
+  ${API_DIR}/../sw/preload/mmap_hooks.c)
+
+add_library(ase-preload MODULE ${ASE_PRELOAD_SRC})
+
+
 # Define headers for this library. PUBLIC headers are used for
 # compiling the library, and will be added to consumers' build
 # paths. Keep current directory private.
@@ -91,6 +101,6 @@ set_target_properties(opae-c-ase PROPERTIES
   VERSION ${ASE_VERSION}
   SOVERSION ${ASE_VERSION_MAJOR})
 
-install(TARGETS ase opae-c-ase
+install(TARGETS ase opae-c-ase ase-preload
   LIBRARY DESTINATION ${OPAE_LIB_INSTALL_DIR}
   COMPONENT opaecase)

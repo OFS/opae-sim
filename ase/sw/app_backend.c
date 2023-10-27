@@ -29,12 +29,12 @@
 #endif
 #define _GNU_SOURCE
 
-#include <byteswap.h>
 #include <unistd.h>
 #include <sys/mman.h>
 
 #include "ase_common.h"
 #include "ase_host_memory.h"
+#include "ase_pcie_ats.h"
 
 const int TID_DELAY = 10000;   // Wait time for generating TID
 
@@ -70,6 +70,7 @@ typedef struct membus_s {
 } MEMBUS_S;
 
 typedef struct pcie_msg_s {
+	pthread_mutex_t pcie_msg_tx_lock;
 	pthread_t pcie_msg_watch_tid;	   // PCIe msg watch thread ID
 } PCIE_MSG_S;
 
@@ -142,6 +143,7 @@ static uint32_t mmio_exist_status;
 static uint32_t umas_exist_status;
 static uint32_t membus_exist_status;
 static uint32_t pcie_msg_exist_status;
+static bool pcie_atc_active;
 
 static void *membus_rd_watcher(void *arg);
 static void *membus_wr_watcher(void *arg);
@@ -581,6 +583,9 @@ void session_init(void)
 
 		// Initiate PCIe message bus watcher
 		ASE_MSG("Starting PCIe message bus watcher ... \n");
+		rc = pthread_mutex_init(&pcie_msg_s.pcie_msg_tx_lock, NULL);
+		if (rc != 0)
+			ASE_ERR("Failed to initialize the pthread_mutex_lock\n");
 		pcie_msg_exist_status = ESTABLISHED;
 		thr_err = pthread_create(&pcie_msg_s.pcie_msg_watch_tid, NULL, &pcie_msg_watcher, NULL);
 		if (thr_err != 0) {
@@ -1761,31 +1766,6 @@ static uint64_t membus_atomic_upd(void *va, uint32_t data_bytes, uint32_t atomic
 
 
 /*
- * Encode a 64 bit physical address, translated from a VA, in a PCIe ATS
- * completion payload.
- */
-static uint64_t pcie_ats_pa_enc(uint64_t pa, uint64_t page_len)
-{
-	// Valid?
-	if (!pa)
-		return 0;
-
-	// Ensure the low 12 flag bits are clear
-	pa &= ~INT64_C(0xfff);
-	// Set the read and write access bits
-	pa |= 3;
-
-	// Page size is encoded starting in bit 11 (the S flag) and then a mask of
-	// ones to fill a page. See 10.2.3.2 in the PCIe standard.
-	uint64_t page_mask = (page_len >> 12) - 1;
-	pa |= (page_mask << 11);
-
-	// Swizzle bytes into the required order
-	return bswap_64(pa);
-}
-
-
-/*
  * Service simulator memory read/write requests.
  */
 static void *membus_rd_watcher(void *arg)
@@ -1801,6 +1781,8 @@ static void *membus_rd_watcher(void *arg)
 	// Buffer for payload in response to an address translation request
 	uint64_t ats_rsp_payload[16];
 	ase_memset(&ats_rsp_payload, 0, sizeof(ats_rsp_payload));
+
+	pcie_atc_active = false;
 
 	// While application is running
 	while (membus_exist_status == ESTABLISHED) {
@@ -1829,6 +1811,9 @@ static void *membus_rd_watcher(void *arg)
 				rd_rsp.va = rd_req.addr;
 				rd_rsp.status = HOST_MEM_STATUS_VALID;
 
+				// Address translation cache is active
+				pcie_atc_active = true;
+
 				ase_memset(&ats_rsp_payload, 0, sizeof(ats_rsp_payload));
 
 				uint64_t page_len;
@@ -1839,7 +1824,8 @@ static void *membus_rd_watcher(void *arg)
 					raise(SIGABRT);
 				}
 
-				ats_rsp_payload[0] = pcie_ats_pa_enc(pa, page_len);
+				// Encode the address for transmission, setting R+W flag bits
+				ats_rsp_payload[0] = ase_pcie_ats_pa_enc(pa, page_len, 3);
 			}
 
 			rd_rsp.data_bytes = rd_req.data_bytes;
@@ -1889,6 +1875,13 @@ static void *membus_rd_watcher(void *arg)
 
 			if (need_mem_unlock)
 				ase_host_memory_unlock();
+
+			// Check PCIe for PCIe ATS timeout errors. ASE doesn't get an event
+			// for every simulated cycle. Use memory traffic as a proxy for time.
+			if (-1 == ase_pcie_ats_itag_cycle()) {
+				ASE_ERR("Aborting!\n");
+				raise(SIGABRT);
+			}
 		}
 	}
 
@@ -1998,6 +1991,13 @@ static void *membus_wr_watcher(void *arg)
 			ase_host_memory_unlock();
 
 			mqueue_send(app2sim_membus_wr_rsp_tx, (char *) &wr_rsp, sizeof(wr_rsp));
+
+			// Check PCIe for PCIe ATS timeout errors. ASE doesn't get an event
+			// for every simulated cycle. Use memory traffic as a proxy for time.
+			if (-1 == ase_pcie_ats_itag_cycle()) {
+				ASE_ERR("Aborting!\n");
+				raise(SIGABRT);
+			}
 		}
 	}
 
@@ -2047,10 +2047,28 @@ static void *pcie_msg_watcher(void *arg)
 				hdr_send.msg1 |= (hdr_recv.msg2 >> 3) & 0x1ff;	// Page request group IDX
 				hdr_send.msg1 |= (resp_code << 12);		// 0 if VA mapped, else 1
 
+				// Hold a lock to write because some PCIe messages are back-to-back
+				// header and payload.
+				if (pthread_mutex_lock(&pcie_msg_s.pcie_msg_tx_lock) != 0) {
+					ASE_ERR("pthread_mutex_lock could not attain lock !\n");
+					exit_cleanup();
+				}
+
 				mqueue_send(app2sim_pcie_msg_tx, (char *) &hdr_send, sizeof(hdr_send));
+
+				if (pthread_mutex_unlock(&pcie_msg_s.pcie_msg_tx_lock) != 0) {
+					ASE_ERR("Mutex unlock failure ... Application Exit here\n");
+					exit_cleanup();
+				}
 			}
-			else
-			{
+			else if (hdr_recv.fmt_type == 0x32 && hdr_recv.msg_code == 0x2) {
+				// ATS invalidation response
+				if (ase_pcie_ats_itag_free(hdr_recv.msg2, hdr_recv.msg1 & 0x7) < 0) {
+					ASE_ERR("Error releasing PCIe ATS invalidation tag. Application Exit here.\n");
+					exit_cleanup();
+				}
+			}
+			else {
 				ASE_ERR("pcie_msg_watcher -- unexpected fmt_type 0x%x, msg_code 0x%x!\n",
 					hdr_recv.fmt_type, hdr_recv.msg_code);
 			}
@@ -2059,6 +2077,99 @@ static void *pcie_msg_watcher(void *arg)
 
 	printf("Stop PCIe message watcher\n");
 	return 0;
+}
+
+/*
+ * Send an ATS translation invalidation request to the FPGA.
+ */
+static void pcie_send_ats_inval(uint64_t va, uint64_t length)
+{
+	// Out buffer for header and address to invalidate
+	ase_pcie_msg_hdr_t hdr_send;
+	uint64_t addr_send;
+
+	int itag = ase_pcie_ats_itag_alloc();
+	if (itag < 0) {
+		ASE_ERR("PCIe ATS invalidation itag allocation failure!\n");
+		exit_cleanup();
+	}
+
+	ase_memset(&hdr_send, 0, sizeof(hdr_send));
+
+	hdr_send.fmt_type = 0x72;
+	hdr_send.len_bytes = 8;
+	hdr_send.msg_code = 1;
+	hdr_send.tag = itag;
+
+	addr_send = ase_pcie_ats_pa_enc(va, length, 0);
+
+	// Hold a lock to ensure header and payload are contiguous
+	if (pthread_mutex_lock(&pcie_msg_s.pcie_msg_tx_lock) != 0) {
+		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
+		exit_cleanup();
+	}
+
+	mqueue_send(app2sim_pcie_msg_tx, (void*)&hdr_send, sizeof(ase_pcie_msg_hdr_t));
+	mqueue_send(app2sim_pcie_msg_tx, (void*)&addr_send, sizeof(addr_send));
+
+	if (pthread_mutex_unlock(&pcie_msg_s.pcie_msg_tx_lock) != 0) {
+		ASE_ERR("Mutex unlock failure ... Application Exit here\n");
+		exit_cleanup();
+	}
+}
+
+/*
+ * Not a particularly fast way to compute integer ceiling of log2(n), but
+ * simple and fast enough given the few times it will be called.
+ */
+static uint64_t ilog2_ceil(uint64_t n)
+{
+	uint64_t shift = 1;
+	uint64_t b = n - 1;
+
+	if (n <= 1)
+		return 0;
+
+	while (b >>= 1)
+		shift += 1;
+	return shift;
+}
+
+/*
+ * This function is called when some portion of the address space is invalidated.
+ * When PCIe ATS is active, it triggers an invalidation message.
+ *
+ * A preloaded library (libase-preload.so) wraps memory update functions, such as
+ * munmap(), and calls this function.
+ */
+void __attribute__((visibility("default"))) ase_mem_unmap_hook(void *va, size_t length)
+{
+	// Invalidate pages only if an address translation request has been seen.
+	// This way ASE sends address space invalidation messages only to AFUs that
+	// are caching translations.
+	if (membus_exist_status != ESTABLISHED || !pcie_atc_active)
+		return;
+
+	if (ase_pt_enable_debug) {
+		printf("ASE munmap %p - %p\n", va, va + length);
+	}
+
+	// Break down the invalidated range into chunks, sized a power of 2 that is
+	// 4KB or larger. The algorithm here matches intel_flush_svm_range_dev()
+	// in the Linux kernel (drivers/iommu/intel/svm.c).
+	uint64_t pages = (length + 4095) / 4096;
+	uint64_t aligned_bytes = INT64_C(1) << (12 + ilog2_ceil(pages));
+	uint64_t start = (uint64_t)va & ~(aligned_bytes - 1);
+	uint64_t end = ((uint64_t)va + (pages * 4096) + (aligned_bytes - 1)) & ~(aligned_bytes - 1);
+
+	// Send ATS invalidation to the hardware
+	while (start < end) {
+		pcie_send_ats_inval(start, aligned_bytes);
+		start += aligned_bytes;
+	}
+
+	// Drop ASE's inverse page table (PA->VA) entries
+	ase_host_memory_inval_va_range((uint64_t)va, length);
 }
 
 /*
