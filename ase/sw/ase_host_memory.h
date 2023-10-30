@@ -156,6 +156,8 @@ typedef struct {
 
 #ifndef SIM_SIDE
 
+extern bool ase_pt_enable_debug;
+
 // Pin a page at specified virtual address. Allocates and returns
 // an IOVA.
 int ase_host_memory_pin(void *va, uint64_t *iova, uint64_t length);
@@ -182,6 +184,9 @@ uint64_t ase_host_memory_va_to_pa(uint64_t va, uint64_t *length);
 //
 // Returns -1 on fatal error.
 int64_t ase_host_memory_va_page_len(uint64_t va);
+
+// Invalidate virtual range, removing it from the PA->VA tracking table.
+void ase_host_memory_inval_va_range(uint64_t va, uint64_t length);
 
 // Initialize/terminate page address translation.
 int ase_host_memory_initialize(void);

@@ -50,7 +50,7 @@
 #define GB (1024UL * MB)
 
 static pthread_mutex_t ase_pt_lock = PTHREAD_MUTEX_INITIALIZER;
-static bool ase_pt_enable_debug;
+bool ase_pt_enable_debug = 0;
 
 /*
  * Tracking structures for IOVA-addressed pinned pages. ASE uses the same
@@ -68,6 +68,15 @@ static struct mem_alloc iova_mem_alloc;
  * ase_host_memory_gen_xor_mask() below for assigning PAs.
  */
 static uint64_t *ase_pa_pt_root;
+
+/*
+ * Cache the most recent result of ase_host_memory_va_page_len() because
+ * walking /proc/self/smaps is slow. A contiguous range of pages has
+ * a single entry in smaps.
+ */
+static bool cached_page_len_valid;
+static unsigned long long cached_page_range_start, cached_page_range_end;
+static unsigned cached_page_len;
 
 STATIC int ase_pt_length_to_level(uint64_t length);
 static uint64_t ase_pt_level_to_bit_idx(int pt_level);
@@ -104,16 +113,12 @@ int ase_host_memory_pin(void *va, uint64_t *iova, uint64_t length)
 	if (status)
 		goto err_unlock;
 
-	if (pthread_mutex_unlock(&ase_pt_lock)) {
-		ASE_ERR("pthread_mutex_lock could not unlock !\n");
-		return -1;
-	}
-
+	ase_host_memory_unlock();
 	note_pinned_page((uint64_t)va, *iova, length);
 	return 0;
 
 err_unlock:
-	pthread_mutex_unlock(&ase_pt_lock);
+	ase_host_memory_unlock();
 	return status;
 }
 
@@ -138,13 +143,11 @@ int ase_host_memory_unpin(uint64_t iova, uint64_t length)
 			return -1;
 
 		status = ase_pt_unpin_page(iova, ase_iova_pt_root, pt_level);
+		if (status < 0)
+			ASE_ERR("Error removing page from IOVA page table (%d)\n", status);
 	}
 
-	if (pthread_mutex_unlock(&ase_pt_lock)) {
-		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
-		status = -1;
-	}
-
+	ase_host_memory_unlock();
 	note_unpinned_page(iova, length);
 	return status;
 }
@@ -212,6 +215,9 @@ int64_t ase_host_memory_va_page_len(uint64_t va)
 	int64_t page_size;
 	char line[4096];
 
+	if (cached_page_len_valid && (cached_page_range_start <= va) && (va < cached_page_range_end))
+		return cached_page_len;
+
 	page_size = 0;
 
 	FILE *f = fopen("/proc/self/smaps", "r");
@@ -257,15 +263,22 @@ int64_t ase_host_memory_va_page_len(uint64_t va)
 			}
 
 			// page_kb is reported in kB. Convert to bytes.
+			int64_t sz = -1;
 			if (page_kb >= 1048576)
-				return GB;
+				sz = GB;
 			else if (page_kb >= 2048)
-				return 2 * MB;
+				sz = 2 * MB;
 			else if (page_kb >= 4)
-				return 4 * KB;
+				sz = 4 * KB;
+			else
+				return -1;
 
-			// Something failed
-			return -1;
+			cached_page_len_valid = true;
+			cached_page_range_start = start;
+			cached_page_range_end = end;
+			cached_page_len = sz;
+
+			return sz;
 		}
 	}
 
@@ -329,8 +342,41 @@ err_unlock:
 }
 
 
+void ase_host_memory_inval_va_range(uint64_t va, uint64_t length)
+{
+	uint64_t va_end = va + length;
+
+	if (pthread_mutex_lock(&ase_pt_lock)) {
+		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
+		return;
+	}
+
+	// Invalidate page by page
+	while (va < va_end)
+	{
+		int64_t page_len = ase_host_memory_va_page_len(va);
+		if (page_len <= 0)
+			break;
+
+		// Start address of current page
+		va = va & ~(page_len - 1);
+
+		// Drop reverse page entry PA->VA
+		int pt_level = ase_pt_length_to_level(page_len);
+		uint64_t pa = va ^ ase_host_memory_gen_xor_mask(pt_level);
+		ase_pt_unpin_page(pa, ase_pa_pt_root, pt_level);
+
+		va += page_len;
+	}
+
+	ase_host_memory_unlock();
+}
+
+
 void ase_host_memory_unlock(void)
 {
+	cached_page_len_valid = false;
+
 	if (pthread_mutex_unlock(&ase_pt_lock))
 		ASE_ERR("pthread_mutex_lock could not unlock !\n");
 }
@@ -383,8 +429,7 @@ void ase_host_memory_terminate(void)
 	ase_pt_delete_tree(ase_pa_pt_root, 3);
 	ase_pa_pt_root = NULL;
 
-	if (pthread_mutex_unlock(&ase_pt_lock))
-		ASE_ERR("pthread_mutex_lock could not unlock !\n");
+	ase_host_memory_unlock();
 }
 
 
@@ -722,12 +767,12 @@ static int ase_pt_unpin_page(uint64_t iova, uint64_t *pt_root, int pt_level)
 	while (level != pt_level) {
 		idx = ase_pt_idx(iova, level);
 		if (pt[idx] == 0) {
-			ASE_ERR("Attempt to unpin non-existent page.\n");
+			// Attempt to unpin non-existent page
 			return -1;
 		}
 
 		if (ase_pt_entry_is_terminal(pt)) {
-			ASE_ERR("Attempt to unpin smaller page inside existing huge page\n");
+			// Attempt to unpin smaller page inside existing huge page
 			return -1;
 		}
 
@@ -739,7 +784,7 @@ static int ase_pt_unpin_page(uint64_t iova, uint64_t *pt_root, int pt_level)
 	if (level) {
 		// Drop a huge page
 		if (!ase_pt_entry_is_terminal((uint64_t *)pt[idx])) {
-			ASE_ERR("Attempt to unpin non-existent page.\n");
+			// Attempt to unpin non-existent page
 			return -1;
 		}
 		if (ase_pt_decr_refcnt(&pt[idx]) == 0) {
@@ -748,6 +793,10 @@ static int ase_pt_unpin_page(uint64_t iova, uint64_t *pt_root, int pt_level)
 		}
 	} else if (pt) {
 		// Drop a 4KB page
+		if (!ase_pt_entry_is_terminal((uint64_t *)pt[idx])) {
+			// Attempt to unpin non-existent page
+			return -1;
+		}
 		ase_pt_decr_refcnt(&pt[idx]);
 	}
 

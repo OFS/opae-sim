@@ -114,10 +114,12 @@ static void fprintf_pcie_ss_msg(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
     switch (hdr->u.msg.msg_code)
     {
       case PCIE_MSGCODE_ATS_INVAL_REQ:
-        fprintf(stream, " ats_inval_req");
+        fprintf(stream, " ats_inval_req dev_id 0x%04x itag 0x%x",
+                hdr->u.msg.msg1 >> 16, hdr->u.msg.msg0 & 0x1f);
         break;
       case PCIE_MSGCODE_ATS_INVAL_CPL:
-        fprintf(stream, " ats_inval_cpl");
+        fprintf(stream, " ats_inval_cpl dev_id 0x%04x cc %d itag_vec 0x%x",
+                hdr->u.msg.msg1 >> 16, hdr->u.msg.msg1 & 0x7, hdr->u.msg.msg2);
         break;
       case PCIE_MSGCODE_PAGE_REQ:
         fprintf(stream, " page_req tag 0x%02x addr 0x%08x%08x gidx 0x%x lwr 0x%x",

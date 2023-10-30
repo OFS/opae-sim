@@ -1201,6 +1201,7 @@ static void pcie_tlp_h2a_msg(
     int status;
     ase_pcie_msg_hdr_t hdr_recv;
     t_pcie_ss_hdr_upk hdr;
+    uint32_t payload[8];
 
     *tvalid = 0;
     *tlast = 0;
@@ -1221,11 +1222,36 @@ static void pcie_tlp_h2a_msg(
         hdr.u.msg.msg1 = hdr_recv.msg1;
         hdr.u.msg.msg2 = hdr_recv.msg2;
 
+        if (hdr.u.msg.msg_code == PCIE_MSGCODE_ATS_INVAL_REQ)
+        {
+            uint16_t dev_id = (pcie_ss_param_cfg.default_pf_num << 4) |
+                              (pcie_ss_param_cfg.default_vf_num << 1) |
+                              pcie_ss_param_cfg.default_vf_active;
+            hdr.u.msg.msg1 |= (dev_id << 16);
+        }
+
         hdr.pf_num = pcie_ss_param_cfg.default_pf_num;
         hdr.vf_num = pcie_ss_param_cfg.default_vf_num;
         hdr.vf_active = pcie_ss_param_cfg.default_vf_active;
 
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
+
+        // Is there data?
+        if (hdr.len_bytes)
+        {
+            // Only short payloads are supported
+            assert(hdr.len_bytes <= sizeof(payload));
+
+            while ((status = mqueue_recv(app2sim_pcie_msg_rx, (char *)payload, hdr.len_bytes)) != ASE_MSG_PRESENT) {
+                if (status == ASE_MSG_ERROR) break;
+            }
+
+            for (int i = 0; i < hdr.len_bytes / 4; i += 1)
+            {
+                svPutPartselBit(tdata, payload[i], (i + pcie_ss_cfg.tlp_hdr_dwords) * 32, 32);
+                svPutPartselBit(tkeep, 0xf, (i + pcie_ss_cfg.tlp_hdr_dwords) * 4, 4);
+            }
+        }
 
         fprintf_pcie_ss_host_to_afu(logfile, cycle, *tlast, &hdr,
                                     tdata, tuser, tkeep);
