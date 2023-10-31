@@ -13,8 +13,7 @@ major limitations:
 * MMIO reads and writes must use the OPAE SDK API's methods. Direct software access to
 MMIO space using pointers will not be detected by the ASE software runtime and will not
 generate PCIe transactions.
-* Only host channels and local memory are emulated. Devices such as Ethernet are not yet
-supported.
+* Only host channels and local memory are emulated. 
 * While accelerators with multiple AFU host channels can be run with ASE, only one port
 will receive transactions. All MMIO traffic will be directed to a single AFU port.
 
