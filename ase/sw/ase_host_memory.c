@@ -342,6 +342,33 @@ err_unlock:
 }
 
 
+uint64_t ase_host_memory_pa_to_va(uint64_t pa, bool lock)
+{
+	if (pthread_mutex_lock(&ase_pt_lock)) {
+		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
+		return 0;
+	}
+
+	// Is the page pinned?
+	int pt_level;
+	uint64_t va;
+	va = ase_pt_lookup_addr(pa, ase_pa_pt_root, &pt_level);
+
+	if (!va)
+	{
+		ase_host_memory_unlock();
+		return 0;
+	}
+
+	if (!lock)
+		ase_host_memory_unlock();
+
+	// Return VA: page base and offset from IOVA
+	uint64_t offset = pa & ((UINT64_C(1) << ase_pt_level_to_bit_idx(pt_level)) - 1);
+	return va | offset;
+}
+
+
 void ase_host_memory_inval_va_range(uint64_t va, uint64_t length)
 {
 	uint64_t va_end = va + length;

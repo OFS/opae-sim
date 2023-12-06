@@ -178,6 +178,8 @@ void ase_host_memory_unlock(void);
 // PCIe ATS emulation. It is not a translation to IOVA!
 // The page length is an output.
 uint64_t ase_host_memory_va_to_pa(uint64_t va, uint64_t *length);
+// Similar to IOVA->VA but from the simulated PA space to VA.
+uint64_t ase_host_memory_pa_to_va(uint64_t pa, bool lock);
 
 // Return the size of the memory page at "va", in bytes. If no memory is mapped
 // at the address return 0.

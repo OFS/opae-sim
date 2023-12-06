@@ -1794,7 +1794,10 @@ static void *membus_rd_watcher(void *arg)
 			{
 				// Normal read
 				rd_rsp.pa = rd_req.addr;
-				rd_rsp.va = ase_host_memory_iova_to_va(rd_req.addr, true);
+				if (rd_req.addr_type == HOST_MEM_AT_UNTRANS)
+					rd_rsp.va = ase_host_memory_iova_to_va(rd_req.addr, true);
+				else
+					rd_rsp.va = ase_host_memory_pa_to_va(rd_req.addr, true);
 				rd_rsp.status = HOST_MEM_STATUS_VALID;
 				need_mem_unlock = true;
 
@@ -1932,7 +1935,10 @@ static void *membus_wr_watcher(void *arg)
 			}
 
 			wr_rsp.pa = wr_req.addr;
-			wr_rsp.va = ase_host_memory_iova_to_va(wr_req.addr, true);
+			if (wr_req.addr_type == HOST_MEM_AT_UNTRANS)
+				wr_rsp.va = ase_host_memory_iova_to_va(wr_req.addr, true);
+			else
+				wr_rsp.va = ase_host_memory_pa_to_va(wr_req.addr, true);
 			wr_rsp.status = membus_op_status(wr_rsp.va, wr_rsp.pa, wr_req.data_bytes);
 
 			if (!wr_rsp.va)
