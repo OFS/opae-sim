@@ -48,8 +48,9 @@ module ase_pcie_ss_emulator
     parameter REQUEST_COMPLETION_BOUNDARY = 64,
     parameter CHANNEL_PAYLOAD_BYTES = 32,
 
-    // ASE currently supports only one active fuction. This sets the
-    // default function.
+    // The number of PFs/VFs that reach the AFU. ASE emulates these all as VFs
+    // on PF0. This value is equivalent to the PIM's number of host channels.
+    parameter NUM_AFU_PORTS = 1,
     parameter PF_NUM = 0,
     parameter VF_NUM = 0,
     parameter VF_ACTIVE = 1
@@ -200,6 +201,7 @@ module ase_pcie_ss_emulator
     // all FIMs have a tag mapper. When completions may be out of order it makes
     // no sense to accept duplicate tags.
     assign param_cfg.emulate_tag_mapper = CPL_REORDER_EN;
+    assign param_cfg.num_afu_ports = NUM_AFU_PORTS;
     assign param_cfg.default_pf_num = PF_NUM;
     assign param_cfg.default_vf_num = VF_NUM;
     assign param_cfg.default_vf_active = VF_ACTIVE;

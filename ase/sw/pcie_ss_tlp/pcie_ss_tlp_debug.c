@@ -71,10 +71,11 @@ static void fprintf_pcie_ss_prefix(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 
 static void fprintf_pcie_ss_base(FILE *stream, const t_pcie_ss_hdr_upk *hdr)
 {
-    fprintf(stream, "%s %s len_bytes 0x%04x",
+    fprintf(stream, "%s %s len_bytes 0x%04x [pf %d vf %d vfa %d]",
             pcie_ss_func_fmttype_to_string(hdr->fmt_type),
             (hdr->dm_mode ? "DM" : "PU"),
-            hdr->len_bytes);
+            hdr->len_bytes,
+            hdr->pf_num, hdr->vf_num, (hdr->vf_active ? 1 : 0));
     fprintf_pcie_ss_prefix(stream, hdr);
 }
 

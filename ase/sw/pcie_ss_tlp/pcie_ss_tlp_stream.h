@@ -439,8 +439,9 @@ typedef struct {
     int ordered_completions;            // Keep completions in order?
     int emulate_tag_mapper;             // Accept duplicate DMA read request tags?
 
-    // ASE currently supports only one active function. Set the default function.
-    // This could be overridden by ASE configuration at run time.
+    // ASE emulates multiple AFU ports using VFs, all assigned to PF0 on
+    // a single PCIe link.
+    int num_afu_ports;
     int default_pf_num;
     int default_vf_num;
     int default_vf_active;
