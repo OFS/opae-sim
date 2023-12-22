@@ -63,7 +63,7 @@ volatile int sockserver_kill;
 static pthread_t socket_srv_tid;
 
 // MMIO Respons lock
-// pthread_mutex_t mmio_resp_lock;
+static pthread_mutex_t mmio_resp_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Variable declarations
 char tstamp_filepath[ASE_FILEPATH_LEN];
@@ -341,6 +341,7 @@ void wr_memline_req_dex(cci_pkt *pkt)
 	int intr_id;
 
 	ase_host_memory_write_req wr_req;
+    memset(&wr_req, 0, sizeof(wr_req));
 
 	if (pkt->mode == CCIPKT_WRITE_MODE) {
 		/*
@@ -458,6 +459,7 @@ void rd_memline_req_dex(cci_pkt *pkt)
 
 	phys_addr = (uint64_t) pkt->cl_addr << 6;
 
+    memset(&rd_req, 0, sizeof(rd_req));
 	rd_req.req = HOST_MEM_REQ_READ;
 	rd_req.addr = phys_addr;
 	rd_req.data_bytes = CL_BYTE_WIDTH;
@@ -518,7 +520,10 @@ void mmio_response(struct mmio_t *mmio_pkt)
 	FUNC_CALL_ENTRY;
 
 	// Lock channel
-	// pthread_mutex_lock (&mmio_resp_lock);
+	if (pthread_mutex_lock(&mmio_resp_lock) != 0) {
+		ASE_ERR("pthread_mutex_lock could not attain lock!\n");
+		return;
+	}
 
 #ifdef ASE_DEBUG
 	print_mmiopkt(fp_memaccess_log, "MMIO Got ", mmio_pkt);
@@ -528,7 +533,7 @@ void mmio_response(struct mmio_t *mmio_pkt)
 	mqueue_send(sim2app_mmiorsp_tx, (char *) mmio_pkt, sizeof(mmio_t));
 
 	// Unlock channel
-	// pthread_mutex_unlock (&mmio_resp_lock);
+	pthread_mutex_unlock (&mmio_resp_lock);
 
 	FUNC_CALL_EXIT;
 }
@@ -1146,7 +1151,22 @@ int ase_listener(int mode)
 				      incoming_mmio_pkt);
 #endif
 			if (mode == 0) {
-				mmio_dispatch(0, incoming_mmio_pkt);
+				// Is the AFU index in the range of emulated AFU ports?
+				if (incoming_mmio_pkt->afu_idx > 0)
+				{
+					// No. Ignore writes and return -1 for reads.
+					if (incoming_mmio_pkt->write_en == MMIO_READ_REQ)
+					{
+						static mmio_t mmio_pkt;
+						memcpy(&mmio_pkt, incoming_mmio_pkt, sizeof(mmio_t));
+						mmio_pkt.resp_en = 1;
+						memset(mmio_pkt.qword, -1, sizeof(mmio_pkt.qword));
+						mmio_response(&mmio_pkt);
+					}
+				}
+				else {
+					mmio_dispatch(0, incoming_mmio_pkt);
+				}
 			}
 			else if (mode == 1) {
 				// OFS early access TLP encoding

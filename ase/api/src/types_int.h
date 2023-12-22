@@ -34,6 +34,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <opae/access.h>
 #include <opae/types_enum.h>
 
 #define ASE_BBSID 0x63000023b637277UL
@@ -81,6 +82,7 @@
 
 /** System-wide unique FPGA resource identifier */
 struct _fpga_token {
+	int idx;		// Index of base device token in aseToken[]
 	fpga_token_header hdr;
 };
 
@@ -96,6 +98,9 @@ struct _fpga_handle {
 	uint64_t umsg_size;	    // umsg Virtual Memory Size
 	uint64_t *umsg_iova;	    // umsg IOVA from driver
 	int pasid;
+	int afu_idx;		    // ASE SW side sees only a vector of
+				    // AFU ports. These are mapped to PF/VF
+				    // on the HW emulation side.
 	bool fpgaMMIO_is_mapped;    // is MMIO mapped?
 };
 

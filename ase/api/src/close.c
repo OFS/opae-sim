@@ -29,7 +29,9 @@
 
 #include <opae/access.h>
 #include "common_int.h"
+#include "token.h"
 #include <ase_common.h>
+#include "ase_host_memory.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -45,9 +47,15 @@ fpga_result __FPGA_API__ ase_fpgaClose(fpga_handle handle)
 
 	struct _fpga_handle *_handle = (struct _fpga_handle *) handle;
 
-	// ASE Release
-	session_deinit();
+	// Track open AFUs
+	struct _fpga_token *_token = (struct _fpga_token *) _handle->token;
+	ase_open_afus_by_tok_idx &= ~(UINT64_C(1) << _token->idx);
 
+	// ASE Release
+	if (!ase_open_afus_by_tok_idx)
+		session_deinit();
+
+	ase_host_memory_terminate_afu(_handle->afu_idx);
 	wsid_tracker_cleanup(_handle->wsid_root, NULL);
 
 	free(_handle);

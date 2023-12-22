@@ -633,6 +633,7 @@ static void pcie_tlp_a2h_mwr(
     {
         // Write to memory
         ase_host_memory_write_req wr_req;
+        memset(&wr_req, 0, sizeof(wr_req));
         wr_req.req = HOST_MEM_REQ_WRITE;
         wr_req.data_bytes = hdr.dw0.length * 4;
         wr_req.addr = hdr.u.mem.addr;
@@ -732,6 +733,7 @@ static void pcie_tlp_a2h_mrd(
     memcpy(&dma_read_state[tag].req_hdr, hdr, sizeof(t_tlp_hdr_upk));
 
     ase_host_memory_read_req rd_req;
+    memset(&rd_req, 0, sizeof(rd_req));
     rd_req.req = HOST_MEM_REQ_READ;
     rd_req.addr = hdr->u.mem.addr;
     if ((hdr->dw0.length == 1) && ! hdr->u.mem.last_be && ! hdr->u.mem.first_be)
@@ -1056,6 +1058,22 @@ static t_mmio_list *mmio_req_tail;
 //
 void pcie_mmio_new_req(const mmio_t *pkt)
 {
+    // Legacy TLP stream supports at most one simulated AFU port
+    if (pkt->afu_idx > 0)
+    {
+        // No. Ignore writes and return -1 for reads.
+        if (pkt->write_en == MMIO_READ_REQ)
+        {
+            static mmio_t mmio_pkt;
+            memcpy(&mmio_pkt, pkt, sizeof(mmio_t));
+            mmio_pkt.resp_en = 1;
+            memset(mmio_pkt.qword, -1, sizeof(mmio_pkt.qword));
+            mmio_response(&mmio_pkt);
+        }
+
+        return;
+    }
+
     // Allocate a request
     t_mmio_list *m = ase_malloc(sizeof(t_mmio_list));
     memcpy(&m->mmio_pkt, pkt, sizeof(mmio_t));

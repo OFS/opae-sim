@@ -936,7 +936,7 @@ void exit_cleanup(void)
 /*
  * MMIO Write 32-bit
  */
-void mmio_write32(int offset, uint32_t data)
+void mmio_write32(int offset, int afu_idx, uint32_t data)
 {
 	FUNC_CALL_ENTRY;
 
@@ -954,6 +954,7 @@ void mmio_write32(int offset, uint32_t data)
 		mmio_pkt->addr = offset;
 		ase_memcpy(mmio_pkt->qword, &data, sizeof(uint32_t));
 		mmio_pkt->resp_en = 0;
+		mmio_pkt->afu_idx = afu_idx;
 
 		// Critical Section
 		if (pthread_mutex_lock(&io_s.mmio_port_lock) != 0) {
@@ -992,7 +993,7 @@ void mmio_write32(int offset, uint32_t data)
 /*
  * MMIO Write 64-bit
  */
-void mmio_write64(int offset, uint64_t data)
+void mmio_write64(int offset, int afu_idx, uint64_t data)
 {
 	FUNC_CALL_ENTRY;
 
@@ -1010,6 +1011,7 @@ void mmio_write64(int offset, uint64_t data)
 		mmio_pkt->addr = offset;
 		ase_memcpy(mmio_pkt->qword, &data, sizeof(uint64_t));
 		mmio_pkt->resp_en = 0;
+		mmio_pkt->afu_idx = afu_idx;
 
 		// Critical section
 		if (pthread_mutex_lock(&io_s.mmio_port_lock) != 0) {
@@ -1047,7 +1049,7 @@ void mmio_write64(int offset, uint64_t data)
 /*
  * MMIO Write 512-bit
  */
-void mmio_write512(int offset, const void *data)
+void mmio_write512(int offset, int afu_idx, const void *data)
 {
 	FUNC_CALL_ENTRY;
 
@@ -1065,6 +1067,7 @@ void mmio_write512(int offset, const void *data)
 		mmio_pkt->addr = offset;
 		ase_memcpy(mmio_pkt->qword, data, 64);
 		mmio_pkt->resp_en = 0;
+		mmio_pkt->afu_idx = afu_idx;
 
 		// Critical Section
 		if (pthread_mutex_lock(&io_s.mmio_port_lock) != 0) {
@@ -1118,7 +1121,7 @@ void mmio_write512(int offset, const void *data)
 /*
  * MMIO Read 32-bit
  */
-void mmio_read32(int offset, uint32_t *data32)
+void mmio_read32(int offset, int afu_idx, uint32_t *data32)
 {
 	FUNC_CALL_ENTRY;
 	int slot_idx;
@@ -1136,6 +1139,7 @@ void mmio_read32(int offset, uint32_t *data32)
 		mmio_pkt->width = MMIO_WIDTH_32;
 		mmio_pkt->addr = offset;
 		mmio_pkt->resp_en = 0;
+		mmio_pkt->afu_idx = afu_idx;
 
 		// Critical section
 		if (pthread_mutex_lock(&io_s.mmio_port_lock) != 0) {
@@ -1187,7 +1191,7 @@ void mmio_read32(int offset, uint32_t *data32)
 /*
  * MMIO Read 64-bit
  */
-void mmio_read64(int offset, uint64_t *data64)
+void mmio_read64(int offset, int afu_idx, uint64_t *data64)
 {
 	FUNC_CALL_ENTRY;
 	int slot_idx;
@@ -1205,6 +1209,7 @@ void mmio_read64(int offset, uint64_t *data64)
 		mmio_pkt->width = MMIO_WIDTH_64;
 		mmio_pkt->addr = offset;
 		mmio_pkt->resp_en = 0;
+		mmio_pkt->afu_idx = afu_idx;
 
 		// Critical section
 		if (pthread_mutex_lock(&io_s.mmio_port_lock) != 0) {
@@ -1795,7 +1800,7 @@ static void *membus_rd_watcher(void *arg)
 				// Normal read
 				rd_rsp.pa = rd_req.addr;
 				if (rd_req.addr_type == HOST_MEM_AT_UNTRANS)
-					rd_rsp.va = ase_host_memory_iova_to_va(rd_req.addr, true);
+					rd_rsp.va = ase_host_memory_iova_to_va(rd_req.afu_idx, rd_req.addr, true);
 				else
 					rd_rsp.va = ase_host_memory_pa_to_va(rd_req.addr, true);
 				rd_rsp.status = HOST_MEM_STATUS_VALID;
@@ -1833,6 +1838,7 @@ static void *membus_rd_watcher(void *arg)
 
 			rd_rsp.data_bytes = rd_req.data_bytes;
 			rd_rsp.tag = rd_req.tag;
+			rd_rsp.afu_idx = rd_req.afu_idx;
 			if (rd_rsp.status != HOST_MEM_STATUS_VALID) {
 				rd_rsp.data_bytes = 0;
 			}
@@ -1936,9 +1942,10 @@ static void *membus_wr_watcher(void *arg)
 
 			wr_rsp.pa = wr_req.addr;
 			if (wr_req.addr_type == HOST_MEM_AT_UNTRANS)
-				wr_rsp.va = ase_host_memory_iova_to_va(wr_req.addr, true);
+				wr_rsp.va = ase_host_memory_iova_to_va(wr_req.afu_idx, wr_req.addr, true);
 			else
 				wr_rsp.va = ase_host_memory_pa_to_va(wr_req.addr, true);
+			wr_rsp.afu_idx = wr_req.afu_idx;
 			wr_rsp.status = membus_op_status(wr_rsp.va, wr_rsp.pa, wr_req.data_bytes);
 
 			if (!wr_rsp.va)
@@ -2045,6 +2052,7 @@ static void *pcie_msg_watcher(void *arg)
 				uint32_t resp_code = (page_len == 0) ? 1 : 0;
 
 				// Construct the response
+				hdr_send.afu_idx = hdr_recv.afu_idx;
 				hdr_send.fmt_type = 0x32;
 				hdr_send.msg_code = 0x5;
 				hdr_send.tag = hdr_recv.tag;
