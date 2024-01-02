@@ -146,6 +146,40 @@ static uint16_t pcie_cpl_byte_count(
     return byte_count;
 }
 
+// AFU index to PF/VF. The emulated host side sees only a number of AFU
+// ports. The simulated FPGA side names AFU ports as VFs on PF0.
+//
+// Return true for a valid AFU index.
+static inline bool afu_idx_to_hdr_pf_vf(
+    int afu_idx,
+    t_pcie_ss_hdr_upk *hdr
+)
+{
+    if (hdr)
+    {
+        hdr->pf_num = 0;
+        hdr->vf_num = afu_idx;
+        hdr->vf_active = 1;
+    }
+
+    if (afu_idx >= pcie_ss_param_cfg.num_afu_ports)
+        return false;
+
+    return true;
+}
+
+static inline int hdr_pf_vf_to_afu_idx(
+    const t_pcie_ss_hdr_upk *hdr
+)
+{
+    if (!hdr || hdr->pf_num || !hdr->vf_active)
+    {
+        return -1;
+    }
+
+    return hdr->vf_num;
+}
+
 
 // ========================================================================
 //
@@ -506,7 +540,9 @@ static void pcie_tlp_a2h_mwr(
     {
         // Write to memory
         ase_host_memory_write_req wr_req;
+        memset(&wr_req, 0, sizeof(wr_req));
         wr_req.req = HOST_MEM_REQ_WRITE;
+        wr_req.afu_idx = hdr_pf_vf_to_afu_idx(&hdr);
         wr_req.data_bytes = hdr.len_bytes;
         wr_req.addr = hdr.u.req.addr;
         wr_req.addr_type = hdr.u.req.attr.at;
@@ -710,9 +746,11 @@ static void pcie_tlp_a2h_mrd(
     memcpy(&dma_read_state[tag].req_hdr, hdr, sizeof(t_pcie_ss_hdr_upk));
 
     static ase_host_memory_read_req rd_req;
+    memset(&rd_req, 0, sizeof(rd_req));
     rd_req.req = HOST_MEM_REQ_READ;
     rd_req.addr = hdr->u.req.addr;
     rd_req.addr_type = hdr->u.req.attr.at;
+    rd_req.afu_idx = hdr_pf_vf_to_afu_idx(hdr);
     if ((hdr->len_bytes <= 4) && ! hdr->u.req.last_dw_be && ! hdr->u.req.first_dw_be)
     {
         // Single word read with all bytes disabled -- a fence
@@ -1098,6 +1136,7 @@ static void pcie_tlp_a2h_msg(
 
     memset(&msg_hdr, 0, sizeof(msg_hdr));
 
+    msg_hdr.afu_idx = hdr_pf_vf_to_afu_idx(hdr);
     msg_hdr.fmt_type = hdr->fmt_type;
     msg_hdr.msg_code = hdr->u.msg.msg_code;
     msg_hdr.len_bytes = hdr->len_bytes;
@@ -1144,6 +1183,22 @@ static t_mmio_list *mmio_req_tail;
 //
 void pcie_ss_mmio_new_req(const mmio_t *pkt)
 {
+    // Is the AFU index in the range of emulated AFU ports?
+    if (pkt->afu_idx >= pcie_ss_param_cfg.num_afu_ports)
+    {
+        // No. Ignore writes and return -1 for reads.
+        if (pkt->write_en == MMIO_READ_REQ)
+        {
+            static mmio_t mmio_pkt;
+            memcpy(&mmio_pkt, pkt, sizeof(mmio_t));
+            mmio_pkt.resp_en = 1;
+            memset(mmio_pkt.qword, -1, sizeof(mmio_pkt.qword));
+            mmio_response(&mmio_pkt);
+        }
+
+        return;
+    }
+
     // Allocate a request
     t_mmio_list *m = ase_malloc(sizeof(t_mmio_list));
     memcpy(&m->mmio_pkt, pkt, sizeof(mmio_t));
@@ -1221,18 +1276,15 @@ static void pcie_tlp_h2a_msg(
         hdr.u.msg.msg0 = hdr_recv.msg0;
         hdr.u.msg.msg1 = hdr_recv.msg1;
         hdr.u.msg.msg2 = hdr_recv.msg2;
+        afu_idx_to_hdr_pf_vf(hdr_recv.afu_idx, &hdr);
 
         if (hdr.u.msg.msg_code == PCIE_MSGCODE_ATS_INVAL_REQ)
         {
-            uint16_t dev_id = (pcie_ss_param_cfg.default_pf_num << 4) |
-                              (pcie_ss_param_cfg.default_vf_num << 1) |
-                              pcie_ss_param_cfg.default_vf_active;
+            uint16_t dev_id = (hdr.pf_num << 4) |
+                              (hdr.vf_num << 1) |
+                              hdr.vf_active;
             hdr.u.msg.msg1 |= (dev_id << 16);
         }
-
-        hdr.pf_num = pcie_ss_param_cfg.default_pf_num;
-        hdr.vf_num = pcie_ss_param_cfg.default_vf_num;
-        hdr.vf_active = pcie_ss_param_cfg.default_vf_active;
 
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
 
@@ -1318,9 +1370,7 @@ static bool pcie_tlp_h2a_mem(
         hdr.u.req.first_dw_be = 0xf;
         hdr.u.req.addr = mmio_pkt->addr;
 
-        hdr.pf_num = pcie_ss_param_cfg.default_pf_num;
-        hdr.vf_num = pcie_ss_param_cfg.default_vf_num;
-        hdr.vf_active = pcie_ss_param_cfg.default_vf_active;
+        afu_idx_to_hdr_pf_vf(mmio_pkt->afu_idx, &hdr);
 
         pcie_ss_tlp_hdr_pack(tdata, tuser, tkeep, &hdr);
         sop = 1;

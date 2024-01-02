@@ -44,7 +44,71 @@ uint32_t session_exist_status = NOT_ESTABLISHED;
 #include <sys/stat.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <unistd.h>
+
+ase_afu_idx_mask ase_open_afus_by_tok_idx;
+
+int aseNumTokens = 3;
+struct _fpga_token aseToken[ASE_MAX_TOKENS] = {
+	{
+	  .idx = 0,
+	  .hdr =
+		{
+			.magic = ASE_TOKEN_MAGIC,
+			.vendor_id = 0x8086,
+			.device_id = ASE_ID,
+			.segment = 0,
+			.bus = ASE_BUS,
+			.device = ASE_DEVICE,
+			.function = ASE_PF0_FUNCTION,
+			.interface = FPGA_IFC_SIM_DFL,
+			.objtype = FPGA_DEVICE,
+			.object_id = ASE_PF0_FME_OBJID,
+			.guid = { 0, },
+			.subsystem_vendor_id = 0x8086,
+			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
+		},
+	},
+	{
+	  .idx = 1,
+	  .hdr =
+		{
+			.magic = ASE_TOKEN_MAGIC,
+			.vendor_id = 0x8086,
+			.device_id = ASE_ID,
+			.segment = 0,
+			.bus = ASE_BUS,
+			.device = ASE_DEVICE,
+			.function = ASE_PF0_FUNCTION,
+			.interface = FPGA_IFC_SIM_DFL,
+			.objtype = FPGA_ACCELERATOR,
+			.object_id = ASE_PF0_PORT_OBJID,
+			.guid = { 0, },
+			.subsystem_vendor_id = 0x8086,
+			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
+		},
+	},
+	{
+	  .idx = 2,
+	  .hdr =
+		{
+			.magic = ASE_TOKEN_MAGIC,
+			.vendor_id = 0x8086,
+			.device_id = ASE_ID,
+			.segment = 0,
+			.bus = ASE_BUS,
+			.device = ASE_DEVICE,
+			.function = ASE_VF0_FUNCTION,
+			.interface = FPGA_IFC_SIM_VFIO,
+			.objtype = FPGA_ACCELERATOR,
+			.object_id = ASE_VF0_PORT_OBJID,
+			.guid = { 0, },
+			.subsystem_vendor_id = 0x8086,
+			.subsystem_device_id = ASE_VF0_SUBSYSTEM_DEVICE
+		},
+	}
+};
 
 extern ssize_t readlink(const char *, char *, size_t);
 fpga_result ase_fpgaCloneToken(fpga_token src,
@@ -267,7 +331,6 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 	      uint32_t *num_matches)
 {
 	uint64_t i;
-	fpga_token ase_token[3];
 
 	if ((num_filters > 0) && (NULL == (filters))) {
 		return FPGA_INVALID_PARAM;
@@ -292,28 +355,53 @@ ase_fpgaEnumerate(const fpga_properties *filters, uint32_t num_filters,
 		session_init();
 		ase_memcpy(&aseToken[0].hdr.guid, FPGA_FME_GUID, sizeof(fpga_guid));
 
-		mmio_read64(0x8, &afuid_data[0]);
-		mmio_read64(0x10, &afuid_data[1]);
-		// Convert afuid_data to readback_afuid
-		// e.g.: readback{0x5037b187e5614ca2, 0xad5bd6c7816273c2} -> "5037B187-E561-4CA2-AD5B-D6C7816273C2"
-		api_guid_to_fpga(afuid_data[1], afuid_data[0], readback_afuid);
-		// The VF contains the AFU.
-		ase_memcpy(&aseToken[2].hdr.guid, readback_afuid, sizeof(fpga_guid));
+		// Fill in the token space by probing for AFU UUIDs on VFs.
+		// The RTL simulation will return -1 after the last VF.
+		// Start the search at token 2. Token 0 is the simulated FIM
+		// and token 1 is the simulated management PF0.
+		for (i = 2; i < ASE_MAX_TOKENS; i++) {
+			mmio_read64(0x8, i-2, &afuid_data[0]);
+			mmio_read64(0x10, i-2, &afuid_data[1]);
+
+			// No more VFs?
+			if (afuid_data[0] == INT64_C(-1) && afuid_data[1] == INT64_C(-1))
+				break;
+
+			// Only VF0's token is initialized in aseToken. Higher entries
+			// need to be replicated from VF0, then adjust the function number.
+			if (i > 2) {
+				ase_memcpy(&aseToken[i], &aseToken[i-1], sizeof(struct _fpga_token));
+				aseToken[i].hdr.function += 1;
+				aseToken[i].idx += 1;
+			}
+
+			// Convert afuid_data to readback_afuid
+			// e.g.: readback{0x5037b187e5614ca2, 0xad5bd6c7816273c2} -> "5037B187-E561-4CA2-AD5B-D6C7816273C2"
+			api_guid_to_fpga(afuid_data[1], afuid_data[0], readback_afuid);
+			// The VF contains the AFU.
+			ase_memcpy(&aseToken[i].hdr.guid, readback_afuid, sizeof(fpga_guid));
+
+			aseNumTokens = i + 1;
+
+			ASE_INFO("Found AFU GUID 0x%016" PRIx64 " %016" PRIx64 " at device %02x:%02x:%x\n",
+				 afuid_data[1], afuid_data[0],
+				 aseToken[i].hdr.bus, aseToken[i].hdr.device, aseToken[i].hdr.function);
+		}
 
 		session_exist_status = ESTABLISHED;
 	}
 
-	for (i = 0; i < 3; i++)
-		ase_token[i] = &aseToken[i];
-
 	*num_matches = 0;
-	for (i = 0; i < 3; i++) {
-		if (matches_filters(filters, num_filters, ase_token[i])) {
-			if (*num_matches < max_tokens)	{
-				if (FPGA_OK != ase_fpgaCloneToken(ase_token[i], &tokens[*num_matches]))
-					FPGA_MSG("Error cloning token");
+	for (i = 0; i < aseNumTokens; i++) {
+		// Skip AFUs that are already open
+		if (!(ase_open_afus_by_tok_idx & (UINT64_C(1) << i))) {
+			if (matches_filters(filters, num_filters, &aseToken[i])) {
+				if (*num_matches < max_tokens)	{
+					if (FPGA_OK != ase_fpgaCloneToken(&aseToken[i], &tokens[*num_matches]))
+						FPGA_MSG("Error cloning token");
+				}
+				++*num_matches;
 			}
-			++*num_matches;
 		}
 	}
 

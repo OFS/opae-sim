@@ -388,7 +388,7 @@ fpga_result __FPGA_API__ ase_fpgaPrepareBuffer(fpga_handle handle, uint64_t len,
 	/* Simulated equivalent of pinning the page */
 	uint64_t dma_map_iova;
 
-	if (ase_host_memory_pin(addr, &dma_map_iova, len) != 0) {
+	if (ase_host_memory_pin(_handle->afu_idx, addr, &dma_map_iova, len) != 0) {
 		if (!preallocated) {
 			buffer_release(addr, len);
 		}
@@ -467,7 +467,7 @@ fpga_result __FPGA_API__ ase_fpgaReleaseBuffer(fpga_handle handle, uint64_t wsid
 	bool preallocated = (wm->flags & FPGA_BUF_PREALLOCATED);
 
 	/* Simulated equivalent of unpinning the page */
-	if (ase_host_memory_unpin(iova, len) != 0) {
+	if (ase_host_memory_unpin(_handle->afu_idx, iova, len) != 0) {
 		if (!preallocated) {
 			buffer_release(buf_addr, len);
 		}

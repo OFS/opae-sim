@@ -73,7 +73,7 @@ fpga_result __FPGA_API__ ase_fpgaWriteMMIO32(fpga_handle handle,
 				return FPGA_INVALID_PARAM;
 			}
 
-			mmio_write32(offset, value);
+			mmio_write32(offset, _handle->afu_idx, value);
 			return FPGA_OK;
 		}
 	}
@@ -108,7 +108,7 @@ fpga_result __FPGA_API__ ase_fpgaReadMMIO32(fpga_handle handle,
 				return FPGA_INVALID_PARAM;
 			}
 
-			mmio_read32(offset, value);
+			mmio_read32(offset, _handle->afu_idx, value);
 			return FPGA_OK;
 		}
 	}
@@ -142,7 +142,7 @@ fpga_result __FPGA_API__ ase_fpgaWriteMMIO64(fpga_handle handle,
 				FPGA_MSG("Offset out of bounds");
 				return FPGA_INVALID_PARAM;
 			}
-			mmio_write64(offset, value);
+			mmio_write64(offset, _handle->afu_idx, value);
 			return FPGA_OK;
 		}
 	}
@@ -175,7 +175,7 @@ fpga_result __FPGA_API__ ase_fpgaReadMMIO64(fpga_handle handle,
 				FPGA_MSG("Offset out of bounds");
 				return FPGA_INVALID_PARAM;
 			}
-			mmio_read64(offset, (uint64_t *) value);
+			mmio_read64(offset, _handle->afu_idx, (uint64_t *) value);
 			return FPGA_OK;
 		}
 	}
@@ -210,7 +210,7 @@ fpga_result __FPGA_API__ ase_fpgaWriteMMIO512(fpga_handle handle,
 				return FPGA_INVALID_PARAM;
 			}
 
-			mmio_write512(offset, value);
+			mmio_write512(offset, _handle->afu_idx, value);
 			return FPGA_OK;
 		}
 	}

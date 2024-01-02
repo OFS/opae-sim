@@ -85,19 +85,22 @@ typedef uint64_t ase_host_memory_status;
 typedef struct {
 	uint64_t addr;
 	ase_host_memory_req req;
-    ase_host_memory_addr_type addr_type;
+	ase_host_memory_addr_type addr_type;
 	uint32_t data_bytes;
 	uint32_t tag;
 
-    uint32_t pasid;
-    uint32_t dummy_pad; // 64 bit alignment
+	uint32_t pasid;
+	uint32_t dummy_pad; // 64 bit alignment
 
-    // Atomic update payload. Since it is fixed length and small it is sent
-    // along with the request. Independent of size, two input functions like
-    // compare and swap always store one operand in index 0 and the other in
-    // index 1.
-    uint64_t atomic_wr_data[2];
-    uint8_t  atomic_func;
+	int32_t afu_idx;	// Emulated AFU index. The FPGA-side emulation
+						// will turn this into a PF/VF number.
+
+	// Atomic update payload. Since it is fixed length and small it is sent
+	// along with the request. Independent of size, two input functions like
+	// compare and swap always store one operand in index 0 and the other in
+	// index 1.
+	uint64_t atomic_wr_data[2];
+	uint8_t	 atomic_func;
 } ase_host_memory_read_req;
 
 //
@@ -114,6 +117,9 @@ typedef struct {
 	uint32_t data_bytes;
 	uint32_t tag;
 
+	int32_t afu_idx;	// Emulated AFU index. The FPGA-side emulation
+						// will turn this into a PF/VF number.
+
 	// Does the response hold valid data?
 	ase_host_memory_status status;
 } ase_host_memory_read_rsp;
@@ -124,9 +130,9 @@ typedef struct {
 typedef struct {
 	uint64_t addr;
 	ase_host_memory_req req;
-    ase_host_memory_addr_type addr_type;
+	ase_host_memory_addr_type addr_type;
 
-    uint32_t pasid;
+	uint32_t pasid;
 
 	// Byte range (PCIe-style 4 bit first byte/last byte enable mask.)
 	// fbe and lbe are ignored when byte_n is 0. Data_bytes must be a
@@ -137,6 +143,9 @@ typedef struct {
 	uint8_t rsvd;
 
 	uint32_t data_bytes;     // Size of the data payload the follows in the message stream
+
+	int32_t afu_idx;         // Emulated AFU index. The FPGA-side emulation
+	                         // will turn this into a PF/VF number.
 } ase_host_memory_write_req;
 
 //
@@ -149,6 +158,9 @@ typedef struct {
 	// a uint64_t so the size is consistent even in 32 bit simulators.
 	uint64_t va;
 
+	int32_t afu_idx;         // Emulated AFU index. The FPGA-side emulation
+	                         // will turn this into a PF/VF number.
+
 	// Was the request to a valid address?
 	ase_host_memory_status status;
 } ase_host_memory_write_rsp;
@@ -160,9 +172,9 @@ extern bool ase_pt_enable_debug;
 
 // Pin a page at specified virtual address. Allocates and returns
 // an IOVA.
-int ase_host_memory_pin(void *va, uint64_t *iova, uint64_t length);
+int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t *iova, uint64_t length);
 // Unpin the page at IOVA.
-int ase_host_memory_unpin(uint64_t iova, uint64_t length);
+int ase_host_memory_unpin(int32_t afu_idx, uint64_t iova, uint64_t length);
 
 // Translate from simulated IOVA address space.  By setting "lock"
 // in the request, the internal page table lock is not released on
@@ -170,7 +182,7 @@ int ase_host_memory_unpin(uint64_t iova, uint64_t length);
 // in the table long enough to access the data to which pa points.
 // Callers using "lock" must call ase_host_memory_unlock() to
 // release the page table lock and avoid deadlocks.
-uint64_t ase_host_memory_iova_to_va(uint64_t iova, bool lock);
+uint64_t ase_host_memory_iova_to_va(int32_t afu_idx, uint64_t iova, bool lock);
 void ase_host_memory_unlock(void);
 
 // Translate a VA to simulated physical address space and add
@@ -193,6 +205,7 @@ void ase_host_memory_inval_va_range(uint64_t va, uint64_t length);
 // Initialize/terminate page address translation.
 int ase_host_memory_initialize(void);
 void ase_host_memory_terminate(void);
+void ase_host_memory_terminate_afu(int32_t afu_idx);
 
 #else
 

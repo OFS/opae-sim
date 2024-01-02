@@ -24,56 +24,19 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,  EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-static struct _fpga_token aseToken[3] = {
-	{
-		{
-			.magic = ASE_TOKEN_MAGIC,
-			.vendor_id = 0x8086,
-			.device_id = ASE_ID,
-			.segment = 0,
-			.bus = ASE_BUS,
-			.device = ASE_DEVICE,
-			.function = ASE_PF0_FUNCTION,
-			.interface = FPGA_IFC_SIM_DFL,
-			.objtype = FPGA_DEVICE,
-			.object_id = ASE_PF0_FME_OBJID,
-			.guid = { 0, },
-			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
-		},
-	},
-	{
-		{
-			.magic = ASE_TOKEN_MAGIC,
-			.vendor_id = 0x8086,
-			.device_id = ASE_ID,
-			.segment = 0,
-			.bus = ASE_BUS,
-			.device = ASE_DEVICE,
-			.function = ASE_PF0_FUNCTION,
-			.interface = FPGA_IFC_SIM_DFL,
-			.objtype = FPGA_ACCELERATOR,
-			.object_id = ASE_PF0_PORT_OBJID,
-			.guid = { 0, },
-			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_PF0_SUBSYSTEM_DEVICE
-		},
-	},
-	{
-		{
-			.magic = ASE_TOKEN_MAGIC,
-			.vendor_id = 0x8086,
-			.device_id = ASE_ID,
-			.segment = 0,
-			.bus = ASE_BUS,
-			.device = ASE_DEVICE,
-			.function = ASE_VF0_FUNCTION,
-			.interface = FPGA_IFC_SIM_VFIO,
-			.objtype = FPGA_ACCELERATOR,
-			.object_id = ASE_VF0_PORT_OBJID,
-			.guid = { 0, },
-			.subsystem_vendor_id = 0x8086,
-			.subsystem_device_id = ASE_VF0_SUBSYSTEM_DEVICE
-		},
-	}
-};
+#ifndef __FPGA_ASE_TOKEN_H__
+#define __FPGA_ASE_TOKEN_H__
+
+#include "types_int.h"
+
+// This must be no larger than 64 because a token index becomes an AFU
+// index and AFU indices are tracked as a bit mask in ase_afu_idx_mask.
+#define ASE_MAX_TOKENS 32
+
+extern int aseNumTokens;
+extern struct _fpga_token aseToken[ASE_MAX_TOKENS];
+
+typedef uint64_t ase_afu_idx_mask;
+extern ase_afu_idx_mask ase_open_afus_by_tok_idx;
+
+#endif // __FPGA_ASE_TOKEN_H__

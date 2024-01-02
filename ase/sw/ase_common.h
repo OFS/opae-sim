@@ -350,6 +350,8 @@ typedef struct mmio_t {
 	int32_t slot_idx;	// Unique scoreboard slot index (less than
 						// MMIO_MAX_OUTSTANDING). Tid is also unique,
 						// but in a larger space.
+	int32_t afu_idx;	// Emulated AFU index. The FPGA-side emulation
+						// will turn this into a PF/VF number.
 } mmio_t;
 
 
@@ -371,10 +373,12 @@ typedef struct {
 	uint8_t fmt_type;
 	uint8_t msg_code;
 	uint16_t len_bytes;
-	uint16_t req_id;
 	uint32_t msg0;
 	uint32_t msg1;
 	uint32_t msg2;
+	int32_t afu_idx;	// Emulated AFU index. The FPGA-side emulation
+	                    // will turn this into a PF/VF number.
+	uint16_t req_id;
 	uint16_t tag;
 } ase_pcie_msg_hdr_t;
 
@@ -528,11 +532,11 @@ extern "C" {
 	uint32_t generate_mmio_tid(void);
 	int mmio_request_put(struct mmio_t *);
 	void mmio_response_get(struct mmio_t *);
-	void mmio_write32(int, uint32_t);
-	void mmio_write64(int, uint64_t);
-	void mmio_read32(int, uint32_t *);
-	void mmio_read64(int, uint64_t *);
-	void mmio_write512(int, const void *);
+	void mmio_write32(int, int, uint32_t);
+	void mmio_write64(int, int, uint64_t);
+	void mmio_read32(int, int, uint32_t *);
+	void mmio_read64(int, int, uint64_t *);
+	void mmio_write512(int, int, const void *);
 
 	// UMSG functions
 	// uint64_t *umsg_get_address(int);

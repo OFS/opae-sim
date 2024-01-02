@@ -44,6 +44,7 @@
 #include <opae/mem_alloc.h>
 #include "ase_common.h"
 #include "ase_host_memory.h"
+#include "token.h"
 
 #define KB 1024
 #define MB (1024 * KB)
@@ -58,8 +59,10 @@ bool ase_pt_enable_debug = 0;
  * The ase_iova_pt_root table maps IOVA back to process VAs, since ASE
  * uses its virtual address space to read and write memory. On real
  * hardware, the table would map IOVA to PA. 
+ *
+ * Each AFU has a unique IOVA space.
  */
-static uint64_t *ase_iova_pt_root;
+static uint64_t *ase_iova_pt_root[ASE_MAX_TOKENS];
 static struct mem_alloc iova_mem_alloc;
 
 /*
@@ -90,9 +93,11 @@ static int ase_pt_unpin_page(uint64_t iova, uint64_t *pt_root, int pt_level);
  * Pin a page at specified virtual address. Allocates and returns the
  * corresponding IOVA.
  */
-int ase_host_memory_pin(void *va, uint64_t *iova, uint64_t length)
+int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t *iova, uint64_t length)
 {
 	int status = -1;
+
+	assert(afu_idx >= 0 && afu_idx < ASE_MAX_TOKENS);
 
 	if (pthread_mutex_lock(&ase_pt_lock)) {
 		ASE_ERR("pthread_mutex_lock could not attain the lock !\n");
@@ -109,7 +114,17 @@ int ase_host_memory_pin(void *va, uint64_t *iova, uint64_t length)
 	if (status)
 		goto err_unlock;
 
-	status = ase_pt_pin_page((uint64_t)va, *iova, ase_iova_pt_root, pt_level);
+	if (ase_iova_pt_root[afu_idx] == NULL) {
+		ase_iova_pt_root[afu_idx] = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
+					MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+		if (ase_iova_pt_root[afu_idx] == MAP_FAILED) {
+			ASE_ERR("Simulated IOVA page table out of memory!\n");
+			return -1;
+		}
+		ase_memset(ase_iova_pt_root[afu_idx], 0, 4096);
+	}
+
+	status = ase_pt_pin_page((uint64_t)va, *iova, ase_iova_pt_root[afu_idx], pt_level);
 	if (status)
 		goto err_unlock;
 
@@ -126,9 +141,11 @@ err_unlock:
 /*
  * Unpin the page at iova.
  */
-int ase_host_memory_unpin(uint64_t iova, uint64_t length)
+int ase_host_memory_unpin(int32_t afu_idx, uint64_t iova, uint64_t length)
 {
 	int status = 0;
+
+	assert(afu_idx >= 0 && afu_idx < ASE_MAX_TOKENS);
 
 	if (pthread_mutex_lock(&ase_pt_lock)) {
 		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
@@ -137,12 +154,12 @@ int ase_host_memory_unpin(uint64_t iova, uint64_t length)
 
 	mem_alloc_put(&iova_mem_alloc, iova);
 
-	if (ase_iova_pt_root != NULL) {
+	if (ase_iova_pt_root[afu_idx] != NULL) {
 		int pt_level = ase_pt_length_to_level(length);
 		if (pt_level == -1)
 			return -1;
 
-		status = ase_pt_unpin_page(iova, ase_iova_pt_root, pt_level);
+		status = ase_pt_unpin_page(iova, ase_iova_pt_root[afu_idx], pt_level);
 		if (status < 0)
 			ASE_ERR("Error removing page from IOVA page table (%d)\n", status);
 	}
@@ -158,8 +175,10 @@ int ase_host_memory_unpin(uint64_t iova, uint64_t length)
  * "lock" must call ase_host_memory_unlock() or subsequent calls to
  * ase_host_memory functions will deadlock.
  */
-uint64_t ase_host_memory_iova_to_va(uint64_t iova, bool lock)
+uint64_t ase_host_memory_iova_to_va(int32_t afu_idx, uint64_t iova, bool lock)
 {
+	assert(afu_idx >= 0 && afu_idx < ASE_MAX_TOKENS);
+
 	if (pthread_mutex_lock(&ase_pt_lock)) {
 		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
 		return 0;
@@ -168,7 +187,7 @@ uint64_t ase_host_memory_iova_to_va(uint64_t iova, bool lock)
 	// Is the page pinned?
 	int pt_level;
 	uint64_t va;
-	va = ase_pt_lookup_addr(iova, ase_iova_pt_root, &pt_level);
+	va = ase_pt_lookup_addr(iova, ase_iova_pt_root[afu_idx], &pt_level);
 
 	if (!va)
 	{
@@ -415,16 +434,6 @@ int ase_host_memory_initialize(void)
 	// is defined.
 	ase_pt_enable_debug = ase_checkenv("ASE_PT_DBG");
 
-	if (ase_iova_pt_root == NULL) {
-		ase_iova_pt_root = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-					MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
-		if (ase_iova_pt_root == MAP_FAILED) {
-			ASE_ERR("Simulated IOVA page table out of memory!\n");
-			return -1;
-		}
-		ase_memset(ase_iova_pt_root, 0, 4096);
-	}
-
 	if (ase_pa_pt_root == NULL) {
 		ase_pa_pt_root = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
 					MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -444,13 +453,28 @@ int ase_host_memory_initialize(void)
 }
 
 
+void ase_host_memory_terminate_afu(int32_t afu_idx)
+{
+	if (afu_idx < 0 || afu_idx >= ASE_MAX_TOKENS)
+		return;
+
+	if (ase_iova_pt_root[afu_idx])
+	{
+		ase_pt_delete_tree(ase_iova_pt_root[afu_idx], 3);
+		ase_iova_pt_root[afu_idx] = NULL;
+	}
+}
+
+
 void ase_host_memory_terminate(void)
 {
 	if (pthread_mutex_lock(&ase_pt_lock))
 		ASE_ERR("pthread_mutex_lock could not attain the lock !\n");
 
-	ase_pt_delete_tree(ase_iova_pt_root, 3);
-	ase_iova_pt_root = NULL;
+	for (int i = 0; i < ASE_MAX_TOKENS; i += 1)
+	{
+		ase_host_memory_terminate_afu(i);
+	}
 	mem_alloc_destroy(&iova_mem_alloc);
 
 	ase_pt_delete_tree(ase_pa_pt_root, 3);
@@ -611,11 +635,9 @@ static inline int ase_pt_idx(uint64_t iova, int pt_level)
 
 static const char* ase_pt_name(uint64_t *pt_root)
 {
-	if (pt_root == ase_iova_pt_root)
-		return "IOVA";
 	if (pt_root == ase_pa_pt_root)
 		return "PA";
-	return "UNKNOWN";
+	return "IOVA";
 }
 
 /*
