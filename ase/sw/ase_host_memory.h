@@ -170,9 +170,12 @@ typedef struct {
 
 extern bool ase_pt_enable_debug;
 
-// Pin a page at specified virtual address. Allocates and returns
-// an IOVA.
-int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t *iova, uint64_t length);
+// Allocate an IOVA of requested size.
+int ase_host_memory_alloc_iova(int32_t afu_idx, uint64_t *iova, uint64_t length);
+// Pin a page at specified virtual address and IOVA.
+int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t iova, uint64_t length);
+// Release IOVA from the address pool.
+int ase_host_memory_free_iova(int32_t afu_idx, uint64_t iova);
 // Unpin the page at IOVA.
 int ase_host_memory_unpin(int32_t afu_idx, uint64_t iova, uint64_t length);
 

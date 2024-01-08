@@ -327,6 +327,12 @@ fpga_result __FPGA_API__ ase_fpgaPrepareBuffer(fpga_handle handle, uint64_t len,
 
 	pg_size = (uint64_t) sysconf(_SC_PAGE_SIZE);
 
+	uint64_t dma_map_iova;
+	if (ase_host_memory_alloc_iova(_handle->afu_idx, &dma_map_iova, len) != 0) {
+		result = FPGA_NO_MEMORY;
+		goto out_unlock;
+	}
+
 	if (preallocated) {
 		/* A special case: respond FPGA_OK when !buf_addr and !len
 		 * as an indication that FPGA_BUF_PREALLOCATED is supported
@@ -386,9 +392,7 @@ fpga_result __FPGA_API__ ase_fpgaPrepareBuffer(fpga_handle handle, uint64_t len,
 	}
 
 	/* Simulated equivalent of pinning the page */
-	uint64_t dma_map_iova;
-
-	if (ase_host_memory_pin(_handle->afu_idx, addr, &dma_map_iova, len) != 0) {
+	if (ase_host_memory_pin(_handle->afu_idx, addr, dma_map_iova, len) != 0) {
 		if (!preallocated) {
 			buffer_release(addr, len);
 		}
@@ -467,6 +471,9 @@ fpga_result __FPGA_API__ ase_fpgaReleaseBuffer(fpga_handle handle, uint64_t wsid
 	bool preallocated = (wm->flags & FPGA_BUF_PREALLOCATED);
 
 	/* Simulated equivalent of unpinning the page */
+	if (ase_host_memory_free_iova(_handle->afu_idx, iova) != 0) {
+		FPGA_MSG("FPGA_PORT_DMA_UNMAP IOVA release failed!");
+	}
 	if (ase_host_memory_unpin(_handle->afu_idx, iova, len) != 0) {
 		if (!preallocated) {
 			buffer_release(buf_addr, len);
@@ -567,4 +574,88 @@ fpga_result __FPGA_API__ ase_fpgaBindSVA(fpga_handle handle, uint32_t *pasid)
 		FPGA_ERR("pthread_mutex_unlock() failed: %s", strerror(err));
 	}
 	return FPGA_OK;
+}
+
+fpga_result __FPGA_API__ ase_fpgaPinBuffer(fpga_handle handle, void *buf_addr,
+					   uint64_t len, uint64_t ioaddr)
+{
+	struct _fpga_handle *_handle = (struct _fpga_handle *)handle;
+	fpga_result result;
+	int err;
+
+	result = handle_check_and_lock(_handle);
+	if (result)
+		return result;
+
+	if (ase_host_memory_pin(_handle->afu_idx, buf_addr, ioaddr, len) != 0) {
+		result = FPGA_INVALID_PARAM;
+	}
+
+	err = pthread_mutex_unlock(&_handle->lock);
+	if (err) {
+		FPGA_ERR("pthread_mutex_unlock() failed: %s", strerror(err));
+	}
+	return result;
+}
+
+fpga_result __FPGA_API__ ase_fpgaUnpinBuffer(fpga_handle handle, void *buf_addr,
+					     uint64_t len, uint64_t ioaddr)
+{
+	int err;
+
+	struct _fpga_handle *_handle = (struct _fpga_handle *)handle;
+	fpga_result result = FPGA_OK;
+
+	result = handle_check_and_lock(_handle);
+	if (result)
+		return result;
+
+	if (ase_host_memory_unpin(_handle->afu_idx, ioaddr, len) != 0) {
+		FPGA_MSG("FPGA_PORT_DMA_UNMAP ioctl failed: %s",
+			 strerror(errno));
+		result = FPGA_INVALID_PARAM;
+	}
+
+	err = pthread_mutex_unlock(&_handle->lock);
+	if (err) {
+		FPGA_ERR("pthread_mutex_unlock() failed: %s", strerror(err));
+	}
+	return result;
+}
+
+fpga_result __FPGA_API__ ase_fpgaGetWSInfo(fpga_handle handle, uint64_t wsid,
+					   uint64_t *ioaddr,
+					   void **buf_addr, uint64_t *len)
+{
+	struct _fpga_handle *_handle = (struct _fpga_handle *)handle;
+	fpga_result result = FPGA_NOT_FOUND;
+	int err;
+
+	ASSERT_NOT_NULL(ioaddr);
+	ASSERT_NOT_NULL(buf_addr);
+	ASSERT_NOT_NULL(len);
+
+	result = handle_check_and_lock(_handle);
+	if (result)
+		return result;
+
+	/* Fetch the buffer physical address and length */
+	struct wsid_map *wm = wsid_find(_handle->wsid_root, wsid);
+	if (!wm) {
+		FPGA_MSG("WSID not found");
+		result = FPGA_INVALID_PARAM;
+		goto out_unlock;
+	}
+
+	*buf_addr = (void *) wm->addr;
+	*ioaddr = wm->phys;
+	*len = wm->len;
+	result = FPGA_OK;
+
+out_unlock:
+	err = pthread_mutex_unlock(&_handle->lock);
+	if (err) {
+		FPGA_ERR("pthread_mutex_unlock() failed: %s", strerror(err));
+	}
+	return result;
 }

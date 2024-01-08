@@ -90,10 +90,26 @@ static int ase_pt_unpin_page(uint64_t iova, uint64_t *pt_root, int pt_level);
 
 
 /*
- * Pin a page at specified virtual address. Allocates and returns the
- * corresponding IOVA.
+ * Allocate an IOVA of requested size.
  */
-int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t *iova, uint64_t length)
+int ase_host_memory_alloc_iova(int32_t afu_idx, uint64_t *iova, uint64_t length)
+{
+	if (pthread_mutex_lock(&ase_pt_lock)) {
+		ASE_ERR("pthread_mutex_lock could not attain the lock !\n");
+		return -1;
+	}
+
+	int status = mem_alloc_get(&iova_mem_alloc, iova, length);
+
+	ase_host_memory_unlock();
+	return status;
+}
+
+
+/*
+ * Pin a page at specified virtual address and IOVA.
+ */
+int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t iova, uint64_t length)
 {
 	int status = -1;
 
@@ -109,11 +125,6 @@ int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t *iova, uint64_t leng
 	if (pt_level == -1)
 		goto err_unlock;
 
-	// Pick an IOVA
-	status = mem_alloc_get(&iova_mem_alloc, iova, length);
-	if (status)
-		goto err_unlock;
-
 	if (ase_iova_pt_root[afu_idx] == NULL) {
 		ase_iova_pt_root[afu_idx] = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
 					MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -124,15 +135,32 @@ int ase_host_memory_pin(int32_t afu_idx, void *va, uint64_t *iova, uint64_t leng
 		ase_memset(ase_iova_pt_root[afu_idx], 0, 4096);
 	}
 
-	status = ase_pt_pin_page((uint64_t)va, *iova, ase_iova_pt_root[afu_idx], pt_level);
+	status = ase_pt_pin_page((uint64_t)va, iova, ase_iova_pt_root[afu_idx], pt_level);
 	if (status)
 		goto err_unlock;
 
 	ase_host_memory_unlock();
-	note_pinned_page((uint64_t)va, *iova, length);
+	note_pinned_page((uint64_t)va, iova, length);
 	return 0;
 
 err_unlock:
+	ase_host_memory_unlock();
+	return status;
+}
+
+
+/*
+ * Release IOVA from the address pool.
+ */
+int ase_host_memory_free_iova(int32_t afu_idx, uint64_t iova)
+{
+	if (pthread_mutex_lock(&ase_pt_lock)) {
+		ASE_ERR("pthread_mutex_lock could not attain the lock !\n");
+		return -1;
+	}
+
+	int status = mem_alloc_put(&iova_mem_alloc, iova);
+
 	ase_host_memory_unlock();
 	return status;
 }
@@ -151,8 +179,6 @@ int ase_host_memory_unpin(int32_t afu_idx, uint64_t iova, uint64_t length)
 		ASE_ERR("pthread_mutex_lock could not attain lock !\n");
 		return -1;
 	}
-
-	mem_alloc_put(&iova_mem_alloc, iova);
 
 	if (ase_iova_pt_root[afu_idx] != NULL) {
 		int pt_level = ase_pt_length_to_level(length);
@@ -749,7 +775,8 @@ static int ase_pt_pin_page(uint64_t va, uint64_t iova, uint64_t *pt_root, int pt
 
 	uint64_t length = 4096 * (UINT64_C(1) << (9 * pt_level));
 
-	ASE_MSG("Add pinned page VA 0x%" PRIx64 ", %s 0x%" PRIx64 ", level %d\n", va, ase_pt_name(pt_root), iova, pt_level);
+	ASE_MSG("Add pinned page VA 0x%" PRIx64 ", %s 0x%" PRIx64 ", level %d (PT %p)\n",
+                va, ase_pt_name(pt_root), iova, pt_level, pt_root);
 
 	int idx;
 	int level = 3;
@@ -806,7 +833,8 @@ static int ase_pt_unpin_page(uint64_t iova, uint64_t *pt_root, int pt_level)
 {
 	assert((pt_level >= 0) && (pt_level < 3));
 
-	ASE_MSG("Remove pinned page %s 0x%" PRIx64 ", level %d\n", ase_pt_name(pt_root), iova, pt_level);
+	ASE_MSG("Remove pinned page %s 0x%" PRIx64 ", level %d (PT %p)\n",
+		ase_pt_name(pt_root), iova, pt_level, pt_root);
 
 	int idx;
 	int level = 3;
