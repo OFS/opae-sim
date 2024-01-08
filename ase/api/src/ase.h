@@ -71,6 +71,13 @@ fpga_result ase_fpgaReleaseBuffer(fpga_handle handle, uint64_t wsid);
 fpga_result ase_fpgaGetIOAddress(fpga_handle handle, uint64_t wsid,
 				   uint64_t *ioaddr);
 fpga_result ase_fpgaBindSVA(fpga_handle handle, uint32_t *pasid);
+fpga_result ase_fpgaPinBuffer(fpga_handle handle, void *buf_addr,
+				uint64_t len, uint64_t ioaddr);
+fpga_result ase_fpgaUnpinBuffer(fpga_handle handle, void *buf_addr,
+				  uint64_t len, uint64_t ioaddr);
+fpga_result ase_fpgaGetWSInfo(fpga_handle handle, uint64_t wsid,
+				uint64_t *ioaddr,
+				void **buf_addr, uint64_t *len);
 fpga_result ase_fpgaGetOPAECVersion(fpga_version *version);
 fpga_result ase_fpgaGetOPAECVersionString(char *version_str, size_t len);
 fpga_result ase_fpgaGetOPAECBuildString(char *build_str, size_t len);
