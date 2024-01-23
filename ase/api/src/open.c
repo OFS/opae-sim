@@ -55,7 +55,7 @@ fpga_result __FPGA_API__ ase_fpgaOpen(fpga_token token, fpga_handle *handle, int
 		return FPGA_INVALID_PARAM;
 	}
 
-	if (flags & ~FPGA_OPEN_SHARED) {
+	if (flags & ~(FPGA_OPEN_SHARED | FPGA_OPEN_HAS_PARENT_AFU)) {
 		FPGA_MSG("Unrecognized flags");
 		return FPGA_INVALID_PARAM;
 	}
