@@ -600,7 +600,7 @@ $(WORK)/quartus_msim_verilog_libs: | $(WORK)
 	mkdir -p $(WORK)/verilog_libs
 ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
-	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool modelsim -language verilog -gen_only -cmd_file quartus_msim_verilog.do
+	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool questasim -language verilog -gen_only -cmd_file quartus_msim_verilog.do
   ifndef ENABLE_HSSI_SIM
 	@# Skip HSSI files -- ASE does not emulate
 	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_msim_verilog.do
@@ -640,7 +640,7 @@ $(WORK)/quartus_msim_vhdl.do: $(WORK)/quartus_msim_verilog_libs
 ifdef DUT_VHD_SRC_LIST
   ifeq ($(GLS_SIM), 1)
 	@# Generate the Quartus family-dependent simulation library list
-	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool modelsim -language vhdl -gen_only -cmd_file quartus_msim_vhdl.do
+	cd $(WORK); quartus_sh --simlib_comp -family $(FPGA_FAMILY) -tool questasim -language vhdl -gen_only -cmd_file quartus_msim_vhdl.do
     ifndef ENABLE_HSSI_SIM
 	@# Skip HSSI files -- ASE does not emulate
 	sed -i '/_hssi_/s/^/# /' $(WORK)/quartus_msim_vhdl.do
