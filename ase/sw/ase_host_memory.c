@@ -99,6 +99,14 @@ int ase_host_memory_alloc_iova(int32_t afu_idx, uint64_t *iova, uint64_t length)
 		return -1;
 	}
 
+	// Round allocated IOVA region up to a page multiple
+	if (length > 2*MB)
+		length = GB * ((length + GB - 1) / (GB));
+	else if (length > 4*KB)
+		length = 2*MB * ((length + 2*MB - 1) / (2*MB));
+	else
+		length = 4*KB * ((length + 4*KB - 1) / (4*KB));
+
 	int status = mem_alloc_get(&iova_mem_alloc, iova, length);
 
 	ase_host_memory_unlock();
@@ -796,7 +804,7 @@ static int ase_pt_pin_page(uint64_t va, uint64_t iova, uint64_t *pt_root, int pt
 			ase_memset((void *)pt[idx], 0, (level > 1) ? 4096 : 512);
 		}
 
-		if (ase_pt_entry_is_terminal(pt)) {
+		if (ase_pt_entry_is_terminal((uint64_t *)pt[idx])) {
 			ASE_ERR("Attempt to map smaller page inside existing huge page\n");
 			return -1;
 		}
