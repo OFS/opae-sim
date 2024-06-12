@@ -183,17 +183,21 @@ module ase_pcie_ss_emulator
     assign param_cfg.num_of_seg = NUM_OF_SEG;
     assign param_cfg.max_rd_req_bytes = MAX_RD_REQ_BYTES;
     assign param_cfg.max_wr_payload_bytes = MAX_WR_PAYLOAD_BYTES;
-`ifndef PLATFORM_FPGA_FAMILY_S10
+`ifdef PLATFORM_FPGA_FAMILY_S10
+    // DM is emulated on S10 and supports only native request sizes.
+    assign param_cfg.max_dm_rd_req_bytes = MAX_RD_REQ_BYTES;
+    assign param_cfg.max_dm_wr_payload_bytes = MAX_WR_PAYLOAD_BYTES;
+`elsif OFS_PCIE_SS_PLAT_CFG_FLAG_DM_ENCODING
     // Allow up to 4KB data mover requests. The PCIe SS breaks them down into
     // legal sizes. Technically, the PCIe SS allows much larger requests but
     // OFS doesn't encourage it. Large requests harm fairness through PF/VF
     // arbiters.
+    assign param_cfg.max_dm_rd_req_bytes = ofs_pcie_ss_cfg_pkg::DM_ENCODING_EN ? 4096 : 0;
+    assign param_cfg.max_dm_wr_payload_bytes = ofs_pcie_ss_cfg_pkg::DM_ENCODING_EN ? 4096 : 0;
+`else
+    // Old FIMs without the DM encoding flag. Assume DM is available.
     assign param_cfg.max_dm_rd_req_bytes = 4096;
     assign param_cfg.max_dm_wr_payload_bytes = 4096;
-`else
-    // DM is emulated on S10 and supports only native request sizes.
-    assign param_cfg.max_dm_rd_req_bytes = MAX_RD_REQ_BYTES;
-    assign param_cfg.max_dm_wr_payload_bytes = MAX_WR_PAYLOAD_BYTES;
 `endif
     assign param_cfg.request_completion_boundary = REQUEST_COMPLETION_BOUNDARY;
     assign param_cfg.ordered_completions = CPL_REORDER_EN;
