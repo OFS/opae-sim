@@ -72,7 +72,7 @@
 #define ASE_VF0_FUNCTION   1
 #define ASE_SOCKET_ID      0
 #define ASE_NUM_MMIO       2
-#define ASE_NUM_IRQ        0
+#define ASE_NUM_IRQ        7
 
 #define ASE_PF0_SUBSYSTEM_DEVICE ASE_ID
 #define ASE_VF0_SUBSYSTEM_DEVICE 0x0A5F
