@@ -39,6 +39,13 @@ set(ASE_VERSION_REVISION 0 CACHE STRING "ASE revision version" FORCE)
 set(ASE_VERSION ${ASE_VERSION_MAJOR}.${ASE_VERSION_MINOR}.${ASE_VERSION_REVISION}
     CACHE STRING "ASE version" FORCE)
 
+set(CPACK_PACKAGE_NAME ${CMAKE_PROJECT_NAME})
+set(CPACK_PACKAGE_VERSION_MAJOR "${ASE_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${ASE_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${ASE_VERSION_REVISION}")
+set(CPACK_PACKAGE_VERSION "${ASE_VERSION}")
+include(CPack)
+
 ############################################################################
 ## Create config_int.h #####################################################
 ############################################################################
