@@ -204,7 +204,12 @@ module ase_pcie_ss_emulator
     // For now, we tie completion reordering and tag mapping together. Almost
     // all FIMs have a tag mapper. When completions may be out of order it makes
     // no sense to accept duplicate tags.
-    assign param_cfg.emulate_tag_mapper = CPL_REORDER_EN;
+    //
+    // When multiple VFs or links are active, there may still be duplicate tags.
+    // There is currently no code in ASE to disambiguate tags on different
+    // VFs. We currently work around this by forcing unique tags in the TLP
+    // emulator.
+    assign param_cfg.emulate_tag_mapper = CPL_REORDER_EN || (NUM_AFU_PORTS > 1);
     assign param_cfg.num_afu_ports = NUM_AFU_PORTS;
     assign param_cfg.default_pf_num = PF_NUM;
     assign param_cfg.default_vf_num = VF_NUM;
