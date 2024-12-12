@@ -582,7 +582,8 @@ static void pcie_tlp_a2h_mrd(
     t_pcie_ss_hdr_upk *hdr,
     const svBitVecVal *tdata,
     const svBitVecVal *tuser,
-    const svBitVecVal *tkeep
+    const svBitVecVal *tkeep,
+    uint32_t payload_dw_offset
 )
 {
     if (!tlast)
@@ -783,7 +784,7 @@ static void pcie_tlp_a2h_mrd(
         uint32_t atomic_opers[4];
         for (int i = 0; i < 4; i += 1)
         {
-            svGetPartselBit(&atomic_opers[i], tdata, (i + pcie_ss_cfg.tlp_hdr_dwords) * 32, 32);
+            svGetPartselBit(&atomic_opers[i], tdata, (i + payload_dw_offset) * 32, 32);
         }
 
         switch (hdr->fmt_type)
@@ -1618,7 +1619,8 @@ typedef enum
 {
     TLP_STATE_SOP,
     TLP_STATE_CPL,
-    TLP_STATE_MEM
+    TLP_STATE_MWR,
+    TLP_STATE_MRD
 }
 t_pcie_ss_state_enum;
 
@@ -1721,7 +1723,7 @@ int pcie_ss_stream_host_to_afu(
         if (!*tvalid &&
             mmio_req_head && ! pcie_tlp_h2a_mem(cycle, tvalid, tlast, tdata, tuser, tkeep))
         {
-            host_to_afu_state = TLP_STATE_MEM;
+            host_to_afu_state = TLP_STATE_MWR;
         }
         else if (!*tvalid &&
                  dma_read_cpl_head && ! pcie_tlp_h2a_cpld(cycle, tvalid, tlast, tdata, tuser, tkeep))
@@ -1737,7 +1739,7 @@ int pcie_ss_stream_host_to_afu(
         }
         break;
 
-      case TLP_STATE_MEM:
+      case TLP_STATE_MWR:
         if (pcie_tlp_h2a_mem(cycle, tvalid, tlast, tdata, tuser, tkeep))
         {
             host_to_afu_state = TLP_STATE_SOP;
@@ -1765,7 +1767,7 @@ int pcie_ss_stream_afu_to_host(
     const svBitVecVal *tkeep
 )
 {
-    t_pcie_ss_hdr_upk hdr;
+    static t_pcie_ss_hdr_upk hdr;
 
     switch (afu_to_host_state)
     {
@@ -1803,16 +1805,34 @@ int pcie_ss_stream_afu_to_host(
             {
                 // DMA write
                 pcie_tlp_a2h_mwr(cycle, tlast, &hdr, tdata, tuser, tkeep);
+                if (!tlast)
+                {
+                    afu_to_host_state = TLP_STATE_MWR;
+                }
             }
             else
             {
                 // DMA read
-                pcie_tlp_a2h_mrd(cycle, tlast, &hdr, tdata, tuser, tkeep);
-            }
+                if (tlast)
+                {
+                    pcie_tlp_a2h_mrd(cycle, tlast, &hdr, tdata, tuser, tkeep,
+                                     pcie_ss_cfg.tlp_hdr_dwords);
+                }
+                else
+                {
+                    if (pcie_ss_cfg.tlp_tdata_dwords > pcie_ss_cfg.tlp_hdr_dwords)
+                    {
+                        ASE_ERR("AFU Tx TLP - Unexpected PCIe read without EOP:\n");
+                        pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
+                    }
+                    if (!func_is_atomic_req(hdr.fmt_type))
+                    {
+                        ASE_ERR("AFU Tx TLP - Unexpected PCIe read with data:\n");
+                        pcie_tlp_a2h_error_and_kill(cycle, tlast, &hdr, tdata, tuser, tkeep);
+                    }
 
-            if (!tlast)
-            {
-                afu_to_host_state = TLP_STATE_MEM;
+                    afu_to_host_state = TLP_STATE_MRD;
+                }
             }
         }
         break;
@@ -1822,9 +1842,20 @@ int pcie_ss_stream_afu_to_host(
         pcie_tlp_a2h_cpld(cycle, tlast, NULL, tdata, tuser, tkeep);
         break;
 
-      case TLP_STATE_MEM:
+      case TLP_STATE_MWR:
         fprintf_pcie_ss_afu_to_host(logfile, cycle, tlast, NULL, tdata, tuser, tkeep);
         pcie_tlp_a2h_mwr(cycle, tlast, NULL, tdata, tuser, tkeep);
+        break;
+
+      case TLP_STATE_MRD:
+        fprintf_pcie_ss_afu_to_host(logfile, cycle, tlast, NULL, tdata, tuser, tkeep);
+        if (!tlast)
+        {
+            ASE_ERR("AFU Tx TLP - expected EOP with DMA atomic multi-beat request:\n");
+            pcie_tlp_a2h_error_and_kill(cycle, tlast, NULL, tdata, tuser, tkeep);
+        }
+
+        pcie_tlp_a2h_mrd(cycle, tlast, &hdr, tdata, tuser, tkeep, 0);
         break;
 
       default:
